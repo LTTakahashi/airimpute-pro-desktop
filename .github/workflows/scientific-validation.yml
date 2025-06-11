@@ -231,7 +231,7 @@ jobs:
     
     steps:
       - name: Download All Platform Results
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: platform-results/
           
@@ -391,7 +391,7 @@ jobs:
         uses: actions/checkout@v4
         
       - name: Download All Results
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: validation-artifacts/
           
