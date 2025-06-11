@@ -353,7 +353,7 @@ jobs:
           
       - name: Upload Coverage to Codecov
         if: matrix.test-type == 'unit'
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           files: ./reports/coverage/**/*.xml
           flags: ${{ matrix.test-type }}-${{ matrix.platform }}
