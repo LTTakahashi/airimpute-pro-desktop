@@ -62,7 +62,7 @@ lazy_static = "1.4"
 
 # Cryptography and Security
 ring = "0.17"
-rustls = "0.21"
+rustls = "0.23"
 argon2 = "0.5"
 
 # Compression and Archives
