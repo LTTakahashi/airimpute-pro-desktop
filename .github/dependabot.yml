@@ -1,0 +1,180 @@
+version: 2
+updates:
+  # NPM dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "02:00"
+    open-pull-requests-limit: 5
+    assignees:
+      - "takahashi"
+    reviewers:
+      - "takahashi"
+    labels:
+      - "dependencies"
+      - "javascript"
+    groups:
+      # Group related UI dependencies
+      ui-components:
+        patterns:
+          - "@radix-ui/*"
+          - "framer-motion"
+          - "lucide-react"
+      # Group development dependencies
+      dev-dependencies:
+        patterns:
+          - "@types/*"
+          - "eslint*"
+          - "prettier*"
+          - "@typescript-eslint/*"
+          - "vitest*"
+          - "@testing-library/*"
+      # Group build tools
+      build-tools:
+        patterns:
+          - "vite*"
+          - "@vitejs/*"
+          - "tailwind*"
+          - "postcss*"
+          - "autoprefixer"
+    ignore:
+      # Major version updates that might break compatibility
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@tauri-apps/api"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+
+  # Rust dependencies
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:00"
+    open-pull-requests-limit: 5
+    assignees:
+      - "takahashi"
+    reviewers:
+      - "takahashi"
+    labels:
+      - "dependencies"
+      - "rust"
+    groups:
+      # Group async/runtime dependencies
+      async-runtime:
+        patterns:
+          - "tokio*"
+          - "futures*"
+          - "async-*"
+      # Group serialization dependencies
+      serialization:
+        patterns:
+          - "serde*"
+          - "bincode"
+          - "json*"
+      # Group database dependencies
+      database:
+        patterns:
+          - "sqlx*"
+          - "sea-orm*"
+    ignore:
+      # Don't update major versions of critical dependencies
+      - dependency-name: "tauri"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pyo3"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "04:00"
+    open-pull-requests-limit: 5
+    assignees:
+      - "takahashi"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  # Python dependencies (pip)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "05:00"
+    open-pull-requests-limit: 5
+    assignees:
+      - "takahashi"
+    reviewers:
+      - "takahashi"
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      # Group scientific computing dependencies
+      scientific:
+        patterns:
+          - "numpy"
+          - "pandas"
+          - "scipy"
+          - "scikit-learn"
+          - "statsmodels"
+      # Group testing dependencies
+      testing:
+        patterns:
+          - "pytest*"
+          - "hypothesis"
+          - "coverage*"
+      # Group code quality tools
+      quality:
+        patterns:
+          - "black"
+          - "ruff"
+          - "mypy"
+          - "isort"
+          - "bandit"
+          - "safety"
+    ignore:
+      # Don't auto-update packages that might affect reproducibility
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pandas"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "scipy"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  # Docker base images
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+    assignees:
+      - "takahashi"
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "build"
+      include: "scope"

@@ -1,0 +1,124 @@
+version: '3.8'
+
+services:
+  # Development environment with hot-reload
+  dev:
+    build:
+      context: .
+      target: development
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/src-tauri/target
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+    ports:
+      - "5173:5173"  # Vite dev server
+      - "1420:1420"  # Tauri dev server
+    environment:
+      - RUST_LOG=debug
+      - NODE_ENV=development
+      - DISPLAY=${DISPLAY}
+    stdin_open: true
+    tty: true
+    command: npm run dev
+    # Enable X11 forwarding for GUI testing
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    network_mode: host
+
+  # Test runner with coverage
+  test:
+    build:
+      context: .
+      target: test-runner
+    volumes:
+      - ./coverage:/app/coverage
+      - ./test-results:/app/test-results
+    environment:
+      - CI=true
+      - RUST_BACKTRACE=full
+    command: |
+      bash -c "
+        npm test -- --coverage --ci
+        cd src-tauri && cargo test --release -- --test-threads=1
+        pytest tests/ -v --cov --cov-report=xml --cov-report=html
+      "
+
+  # Security scanning
+  security:
+    build:
+      context: .
+      target: security-scanner
+    volumes:
+      - ./security-reports:/app/security-reports
+    command: |
+      bash -c "
+        bandit -r scripts/ -f json -o /app/security-reports/bandit.json
+        safety check --json > /app/security-reports/safety.json
+        npm audit --json > /app/security-reports/npm-audit.json
+        cd src-tauri && cargo audit --json > /app/security-reports/cargo-audit.json
+      "
+
+  # Documentation builder
+  docs:
+    build:
+      context: .
+      target: docs-builder
+    volumes:
+      - ./docs:/app/docs
+    ports:
+      - "8000:8000"
+    command: |
+      bash -c "
+        typedoc --watch &
+        cd docs && python -m http.server 8000
+      "
+
+  # Production build
+  build:
+    build:
+      context: .
+      target: packager
+    volumes:
+      - ./packages:/app/packages
+      - ./dist:/app/dist
+    command: npm run tauri build
+
+  # Benchmark runner
+  benchmark:
+    build:
+      context: .
+      target: development
+    volumes:
+      - .:/app
+      - ./benchmark-results:/app/benchmark-results
+    environment:
+      - RUST_LOG=info
+    command: |
+      bash -c "
+        cd src-tauri && cargo criterion --output-format json > /app/benchmark-results/rust-benchmarks.json
+        cd /app && python tests/benchmarks/performance_benchmarks.py --output=/app/benchmark-results/python-benchmarks.json
+      "
+
+  # Scientific validation
+  scientific-validation:
+    build:
+      context: .
+      target: python-env
+    volumes:
+      - .:/app
+      - ./validation-results:/app/validation-results
+    environment:
+      - PYTHONPATH=/app
+    command: |
+      bash -c "
+        python tests/scientific/accuracy/synthetic_data_tests.py
+        python tests/scientific/statistical/distribution_tests.py
+        python tests/scientific/numerical/stability_tests.py
+        python tests/scientific/reproducibility/determinism_tests.py
+      "
+
+volumes:
+  cargo-cache:
+  cargo-git:

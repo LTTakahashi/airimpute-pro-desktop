@@ -1,0 +1,83 @@
+name: 'Setup Build Environment'
+description: 'Sets up Node.js, Rust, Python and caching for AirImpute Pro builds'
+
+inputs:
+  node-version:
+    description: 'Node.js version to use'
+    required: true
+  rust-version:
+    description: 'Rust version to use'
+    required: true
+  python-version:
+    description: 'Python version to use'
+    required: true
+  rust-target:
+    description: 'Rust compilation target'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js with pnpm
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+        
+    - name: Setup Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ inputs.rust-version }}
+        components: rustfmt, clippy
+        targets: ${{ inputs.rust-target }}
+        
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: 'pip'
+        
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: './src-tauri -> target'
+        cache-on-failure: true
+        
+    - name: Setup sccache for Rust
+      uses: mozilla-actions/sccache-action@v0.0.3
+      
+    - name: Configure sccache
+      shell: bash
+      run: |
+        echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+        echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+        
+    - name: Cache Python packages
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/pip
+          ~/.local/lib/python*/site-packages
+        key: ${{ runner.os }}-python-${{ inputs.python-version }}-${{ hashFiles('**/requirements*.txt', '**/setup.py', '**/pyproject.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-python-${{ inputs.python-version }}-
+          
+    - name: Install Python build dependencies
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        python -m pip install build twine
+        
+    - name: Setup Tauri dependencies cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          src-tauri/target/
+        key: ${{ runner.os }}-tauri-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-tauri-

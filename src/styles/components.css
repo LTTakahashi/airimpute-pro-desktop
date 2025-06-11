@@ -1,0 +1,214 @@
+/**
+ * Component-specific styles
+ * Supporting scientific visualization and accessibility
+ */
+
+/* High contrast mode overrides */
+.high-contrast {
+  --color-primary: #000000;
+  --color-secondary: #0066cc;
+  --color-accent: #008000;
+  --color-success: #008000;
+  --color-warning: #ff6600;
+  --color-error: #cc0000;
+  --color-info: #0066cc;
+}
+
+.high-contrast * {
+  border-width: 2px !important;
+}
+
+/* Color blind mode filters */
+.colorblind-protanopia {
+  filter: url('#protanopia-filter');
+}
+
+.colorblind-deuteranopia {
+  filter: url('#deuteranopia-filter');
+}
+
+.colorblind-tritanopia {
+  filter: url('#tritanopia-filter');
+}
+
+/* Scientific notation styling */
+.scientific-notation {
+  font-family: 'JetBrains Mono', 'Monaco', 'Consolas', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Time series chart enhancements */
+.time-series-chart {
+  position: relative;
+}
+
+.time-series-chart .plotly .main-svg {
+  overflow: visible;
+}
+
+/* Correlation matrix enhancements */
+.correlation-matrix .plotly .heatmap text {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+/* Progress indicator animations */
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+/* Reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus visible enhancement */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Skip to content link */
+.skip-to-content {
+  position: absolute;
+  left: -9999px;
+  z-index: 999;
+  padding: 1rem;
+  background-color: var(--color-primary);
+  color: white;
+  text-decoration: none;
+  border-radius: 0.25rem;
+}
+
+.skip-to-content:focus {
+  left: 1rem;
+  top: 1rem;
+}
+
+/* Loading skeleton animation */
+@keyframes skeleton-loading {
+  0% {
+    background-color: rgba(0, 0, 0, 0.1);
+  }
+  50% {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+  100% {
+    background-color: rgba(0, 0, 0, 0.1);
+  }
+}
+
+.skeleton {
+  animation: skeleton-loading 1.5s infinite;
+}
+
+/* Print styles for scientific reports */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .page-break {
+    page-break-after: always;
+  }
+  
+  .time-series-chart,
+  .correlation-matrix {
+    break-inside: avoid;
+  }
+  
+  .scientific-card {
+    border: 1px solid #000;
+    margin-bottom: 1rem;
+  }
+}
+
+/* SVG filters for color blind modes */
+svg.color-filters {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+/* Tooltip styles */
+.scientific-tooltip {
+  max-width: 300px;
+  padding: 0.5rem;
+  background-color: rgba(0, 0, 0, 0.9);
+  color: white;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Error boundary styles */
+.error-boundary pre {
+  max-height: 400px;
+  overflow-y: auto;
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 1rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+}
+
+/* Numeric input enhancements */
+.numeric-input-container input::-webkit-inner-spin-button,
+.numeric-input-container input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.numeric-input-container input[type=number] {
+  -moz-appearance: textfield;
+}
+
+/* Screen reader only content */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Focus trap container */
+.focus-trap {
+  position: relative;
+}
+
+.focus-trap:focus {
+  outline: none;
+}
+
+/* Responsive utilities */
+@media (max-width: 640px) {
+  .hide-on-mobile {
+    display: none;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .hide-on-tablet {
+    display: none;
+  }
+}
+
+@media (min-width: 1025px) {
+  .hide-on-desktop {
+    display: none;
+  }
+}

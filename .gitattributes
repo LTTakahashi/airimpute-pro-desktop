@@ -1,0 +1,76 @@
+# Git attributes for cross-platform development
+# Following CLAUDE.md specifications for Windows compatibility
+
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+
+# Force LF for specific file types (cross-platform consistency)
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.html text eol=lf
+*.xml text eol=lf
+*.svg text eol=lf
+*.toml text eol=lf
+*.rs text eol=lf
+*.lock text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+.editorconfig text eol=lf
+LICENSE text eol=lf
+Makefile text eol=lf
+
+# Shell scripts should always have LF
+*.sh text eol=lf
+
+# Windows-specific files should have CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.7z binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.msi binary
+*.deb binary
+*.rpm binary
+*.dmg binary
+*.app binary
+
+# Rust/Cargo files
+Cargo.lock text eol=lf
+target/ binary
+
+# Node modules should not be normalized
+node_modules/ binary
+
+# Diff settings
+*.ts diff=typescript
+*.tsx diff=typescript
+*.js diff=javascript
+*.jsx diff=javascript
+*.rs diff=rust

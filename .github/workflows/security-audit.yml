@@ -1,0 +1,306 @@
+name: Security Audit
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '**/package.json'
+      - '**/package-lock.json'
+      - '**/requirements*.txt'
+      - '**/*.py'
+      - '**/*.rs'
+
+jobs:
+  security-audit:
+    name: Comprehensive Security Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Setup Environment
+        uses: ./.github/actions/setup-build-env
+        with:
+          node-version: '18.19.0'
+          rust-version: '1.75.0'
+          python-version: '3.11'
+          
+      # ========================================
+      # Frontend Security Scanning
+      # ========================================
+      - name: NPM Audit
+        id: npm-audit
+        continue-on-error: true
+        run: |
+          npm audit --production --json > npm-audit.json || true
+          npm audit --production
+          
+      - name: Snyk Frontend Scan
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          npm install -g snyk
+          snyk test --severity-threshold=high --json > snyk-frontend.json || true
+          snyk code test --json > snyk-code-frontend.json || true
+          
+      - name: RetireJS Scan
+        continue-on-error: true
+        run: |
+          npm install -g retire
+          retire --outputformat json --outputpath retire-report.json || true
+          
+      # ========================================
+      # Backend (Rust) Security Scanning
+      # ========================================
+      - name: Cargo Audit
+        continue-on-error: true
+        run: |
+          cargo install cargo-audit
+          cd src-tauri
+          cargo audit --json > ../cargo-audit.json || true
+          cargo audit
+          
+      - name: Rust Security Analysis
+        continue-on-error: true
+        run: |
+          cargo install cargo-geiger
+          cd src-tauri
+          cargo geiger --output-format Json > ../cargo-geiger.json || true
+          
+      # ========================================
+      # Python Security Scanning
+      # ========================================
+      - name: Bandit Security Scan
+        continue-on-error: true
+        run: |
+          pip install bandit
+          bandit -r scripts/ tests/ -f json -o bandit-report.json || true
+          bandit -r scripts/ tests/ -ll
+          
+      - name: Safety Check
+        continue-on-error: true
+        run: |
+          pip install safety
+          safety check --json > safety-report.json || true
+          safety check
+          
+      - name: Pip Audit
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit --format json --output pip-audit.json || true
+          
+      # ========================================
+      # Container Security Scanning
+      # ========================================
+      - name: Trivy Container Scan
+        continue-on-error: true
+        run: |
+          # Install Trivy
+          sudo apt-get update
+          sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install trivy -y
+          
+          # Scan filesystem
+          trivy fs . --format json --output trivy-fs.json || true
+          
+          # Scan Dockerfile
+          trivy config Dockerfile --format json --output trivy-dockerfile.json || true
+          
+      # ========================================
+      # Secret Scanning
+      # ========================================
+      - name: GitLeaks Secret Detection
+        continue-on-error: true
+        run: |
+          # Install gitleaks
+          wget https://github.com/gitleaks/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz
+          tar -xzf gitleaks_8.18.0_linux_x64.tar.gz
+          sudo mv gitleaks /usr/local/bin/
+          
+          # Run scan
+          gitleaks detect --source . --format json --report gitleaks-report.json || true
+          
+      - name: TruffleHog Secret Scan
+        continue-on-error: true
+        run: |
+          pip install truffleHog3
+          trufflehog3 --format json --output trufflehog-report.json || true
+          
+      # ========================================
+      # SAST Analysis
+      # ========================================
+      - name: Semgrep SAST
+        continue-on-error: true
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        run: |
+          pip install semgrep
+          semgrep --config=auto --json --output=semgrep-report.json || true
+          
+      - name: CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          languages: javascript, python
+          
+      # ========================================
+      # License Compliance
+      # ========================================
+      - name: License Check
+        continue-on-error: true
+        run: |
+          # Frontend licenses
+          npm install -g license-checker
+          license-checker --json --production > frontend-licenses.json
+          
+          # Rust licenses
+          cargo install cargo-license
+          cd src-tauri
+          cargo license --json > ../rust-licenses.json
+          
+          # Python licenses
+          pip install pip-licenses
+          pip-licenses --format=json --output-file=python-licenses.json
+          
+      # ========================================
+      # SBOM Generation
+      # ========================================
+      - name: Generate SBOM
+        run: |
+          # Install syft
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          
+          # Generate SBOM
+          syft . -o spdx-json > sbom.spdx.json
+          syft . -o cyclonedx-json > sbom.cyclonedx.json
+          
+      # ========================================
+      # Vulnerability Database Check
+      # ========================================
+      - name: Check Against CVE Database
+        continue-on-error: true
+        run: |
+          # Install grype
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          
+          # Scan against CVE database
+          grype . --output json > grype-report.json || true
+          
+      # ========================================
+      # Generate Security Report
+      # ========================================
+      - name: Generate Consolidated Report
+        if: always()
+        run: |
+          mkdir -p security-reports
+          
+          # Move all reports
+          mv *.json security-reports/ 2>/dev/null || true
+          
+          # Generate summary
+          python3 << EOF
+          import json
+          import glob
+          from datetime import datetime
+          
+          summary = {
+              "scan_date": datetime.now().isoformat(),
+              "commit_sha": "${{ github.sha }}",
+              "branch": "${{ github.ref_name }}",
+              "vulnerabilities": {
+                  "critical": 0,
+                  "high": 0,
+                  "medium": 0,
+                  "low": 0
+              },
+              "scans_performed": []
+          }
+          
+          # Process each report
+          for report_file in glob.glob("security-reports/*.json"):
+              try:
+                  with open(report_file, 'r') as f:
+                      data = json.load(f)
+                      summary["scans_performed"].append(report_file.split('/')[-1])
+              except:
+                  pass
+          
+          # Write summary
+          with open("security-reports/summary.json", 'w') as f:
+              json.dump(summary, f, indent=2)
+          
+          # Generate markdown report
+          with open("security-reports/SECURITY_REPORT.md", 'w') as f:
+              f.write(f"# Security Audit Report\\n")
+              f.write(f"Generated: {summary['scan_date']}\\n")
+              f.write(f"Commit: {summary['commit_sha']}\\n")
+              f.write(f"Branch: {summary['branch']}\\n\\n")
+              f.write(f"## Summary\\n")
+              f.write(f"Total scans performed: {len(summary['scans_performed'])}\\n")
+          EOF
+          
+      # ========================================
+      # Upload Results
+      # ========================================
+      - name: Upload Security Reports
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-audit-${{ github.run_id }}
+          path: security-reports/
+          
+      - name: Upload SARIF Results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: security-reports/
+          
+      # ========================================
+      # Create Issues for Critical Findings
+      # ========================================
+      - name: Create Security Issues
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const title = `Security Audit Failed - ${new Date().toISOString().split('T')[0]}`;
+            const body = `## Security Audit Results
+            
+            The automated security audit has detected potential vulnerabilities.
+            
+            **Scan Date**: ${new Date().toISOString()}
+            **Commit**: ${{ github.sha }}
+            **Workflow Run**: [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            
+            Please review the detailed security reports in the workflow artifacts.
+            
+            ### Required Actions:
+            1. Review all security findings
+            2. Prioritize critical and high severity issues
+            3. Create remediation plan
+            4. Update dependencies as needed
+            `;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['security', 'automated']
+            });

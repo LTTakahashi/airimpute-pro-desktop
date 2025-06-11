@@ -1,0 +1,43 @@
+# AirImpute Pro Desktop CODEOWNERS
+# This file defines who is responsible for code reviews in different parts of the codebase
+
+# Default owners for everything
+* @takahashi
+
+# Frontend code
+/src/ @takahashi
+*.tsx @takahashi
+*.ts @takahashi
+*.css @takahashi
+
+# Rust backend
+/src-tauri/ @takahashi
+*.rs @takahashi
+Cargo.toml @takahashi
+Cargo.lock @takahashi
+
+# Python scientific code
+*.py @takahashi
+/scripts/ @takahashi
+/tests/scientific/ @takahashi
+
+# CI/CD and DevOps
+/.github/ @takahashi
+Dockerfile @takahashi
+docker-compose.yml @takahashi
+
+# Documentation
+*.md @takahashi
+/docs/ @takahashi
+
+# Configuration files
+package.json @takahashi
+package-lock.json @takahashi
+tsconfig.json @takahashi
+vite.config.ts @takahashi
+tailwind.config.js @takahashi
+
+# Scientific validation
+/tests/benchmarks/ @takahashi
+/tests/reproducibility/ @takahashi
+requirements*.txt @takahashi
