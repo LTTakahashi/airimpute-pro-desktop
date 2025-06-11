@@ -92,7 +92,7 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 encoding_rs = "0.8"
 
 # System Information
-sysinfo = "0.30"
+sysinfo = "0.35"
 num_cpus = "1.16"
 dirs = "5.0"
 
