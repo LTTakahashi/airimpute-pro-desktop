@@ -3,7 +3,7 @@
  * For progress tracking, status indication, and error handling
  */
 
-import { ScientificComponentProps, ComputationProgress, ScientificError } from './index';
+import type { ScientificComponentProps, ComputationProgress, ScientificError } from './index';
 
 // Progress indicator for long computations
 export interface ProgressIndicatorProps extends ScientificComponentProps {

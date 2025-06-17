@@ -15,11 +15,9 @@ import {
   Trash2,
   Edit2,
   Check,
-  AlertCircle,
   ExternalLink,
   FileText,
   Users,
-  Calendar,
   Link,
   Hash
 } from 'lucide-react';
@@ -224,7 +222,6 @@ export const CitationGenerator: React.FC<CitationGeneratorProps> = ({
     // Format based on type and style
     const authors = formatAuthors(citation.authors, style);
     const year = `(${citation.year})`;
-    const title = citation.type === 'article' ? `"${citation.title}"` : `*${citation.title}*`;
     
     let formatted = '';
     
@@ -316,7 +313,7 @@ export const CitationGenerator: React.FC<CitationGeneratorProps> = ({
         filename += '.json';
         mimeType = 'application/json';
         break;
-      case 'csv':
+      case 'csv': {
         // Simple CSV export
         const headers = ['Type', 'Authors', 'Title', 'Year', 'Journal', 'DOI'];
         const rows = citations.map(c => [
@@ -331,6 +328,7 @@ export const CitationGenerator: React.FC<CitationGeneratorProps> = ({
         filename += '.csv';
         mimeType = 'text/csv';
         break;
+      }
     }
     
     // Create and download file

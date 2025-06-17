@@ -142,10 +142,10 @@ impl ProgressTracker {
         let _ = self.tx.send(ProgressUpdate {
             id: self.id.clone(),
             operation: self.operation.clone(),
-            progress: self.current.read().await.clone() as f32 / self.total as f32 * 100.0,
+            progress: *self.current.read().await as f32 / self.total as f32 * 100.0,
             message: "Cancelled".to_string(),
             details: ProgressDetails {
-                current: self.current.read().await.clone(),
+                current: *self.current.read().await,
                 total: self.total,
                 elapsed_seconds: self.start_time.elapsed().as_secs_f32(),
                 estimated_remaining_seconds: None,

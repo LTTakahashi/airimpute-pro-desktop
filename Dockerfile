@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     # Tauri/WebKit dependencies
     libwebkit2gtk-4.0-dev \
+    libjavascriptcoregtk-4.0-dev \
     libgtk-3-dev \
     libayatana-appindicator3-dev \
     librsvg2-dev \
@@ -234,9 +235,13 @@ COPY . .
 RUN npm ci
 RUN cd src-tauri && cargo fetch
 
+# No webkit compatibility symlinks needed since we're using webkit 4.0 directly
+
 # Set up development environment
 ENV RUST_LOG=debug
 ENV NODE_ENV=development
+ENV RUSTFLAGS="-C link-arg=-lpython3.11"
+ENV PYO3_PYTHON=/usr/bin/python3.11
 
 # Expose ports
 EXPOSE 5173 1420

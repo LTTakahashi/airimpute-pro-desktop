@@ -1,16 +1,14 @@
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 import { Checkbox } from '../ui/Checkbox';
-import { Progress } from '../ui/Progress';
 import { 
   Zap, 
   Brain, 
   TrendingUp, 
   BarChart2, 
   GitBranch,
-  Cpu,
   Timer,
   Info,
   Settings,
@@ -41,14 +39,6 @@ const categoryIcons: Record<string, React.ElementType> = {
   'deep_learning': GitBranch,
   'ensemble': TrendingUp,
   'interpolation': Timer
-};
-
-const categoryColors: Record<string, string> = {
-  'statistical': 'secondary',
-  'machine_learning': 'default',
-  'deep_learning': 'destructive',
-  'ensemble': 'success',
-  'interpolation': 'outline'
 };
 
 export const MethodComparison: React.FC<MethodComparisonProps> = ({
@@ -174,7 +164,6 @@ export const MethodComparison: React.FC<MethodComparisonProps> = ({
         {Object.entries(filteredGroups).map(([category, categoryMethods]) => {
           const Icon = categoryIcons[category] || BarChart2;
           const allSelected = categoryMethods.every(m => selectedMethods.includes(m.name));
-          const someSelected = categoryMethods.some(m => selectedMethods.includes(m.name));
           
           return (
             <Card key={category}>

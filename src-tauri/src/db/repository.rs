@@ -352,7 +352,7 @@ impl UnitOfWork {
         let job_repo = JobRepository::new(self.db.clone());
         
         // Start transaction
-        let mut tx = self.db.pool.begin().await?;
+        let tx = self.db.pool.begin().await?;
         
         // Update job status to running
         job_repo.update_job_status(job_id, JobStatus::Running).await?;

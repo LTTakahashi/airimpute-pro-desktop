@@ -56,7 +56,7 @@ const Visualization: React.FC = () => {
   const { currentDataset, imputationResults } = useStore();
   const [selectedVisualization, setSelectedVisualization] = useState<VisualizationType>('timeseries');
   const [selectedVariables, setSelectedVariables] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
 
   const handleExportVisualization = async () => {
     try {

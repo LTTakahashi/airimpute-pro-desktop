@@ -3,14 +3,11 @@ use std::sync::Arc;
 use tauri::State;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use anyhow::{Result, Context};
-use tracing::{info, warn, error};
-use std::path::PathBuf;
-use base64;
+use anyhow::Result;
+use tracing::info;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use crate::state::AppState;
-use crate::python::bridge::PythonBridge;
-use crate::core::data::Dataset;
 use crate::core::imputation::JobStatus;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -198,7 +195,10 @@ result = {
     
     // Save to file if requested
     if let Some(save_path) = &options.save_path {
-        let image_bytes = base64::decode(&plot_data["image_data"].as_str().unwrap_or_default())
+        let b64_data = plot_data["image_data"]
+            .as_str()
+            .ok_or("Plot result is missing 'image_data' or it is not a string")?;
+        let image_bytes = STANDARD.decode(b64_data)
             .map_err(|e| format!("Failed to decode image data: {}", e))?;
         
         std::fs::write(save_path, &image_bytes)
@@ -451,7 +451,10 @@ result = {
     
     // Save to file if requested
     if let Some(save_path) = &options.save_path {
-        let image_bytes = base64::decode(&plot_data["image_data"].as_str().unwrap_or_default())
+        let b64_data = plot_data["image_data"]
+            .as_str()
+            .ok_or("Plot result is missing 'image_data' or it is not a string")?;
+        let image_bytes = STANDARD.decode(b64_data)
             .map_err(|e| format!("Failed to decode image data: {}", e))?;
         
         std::fs::write(save_path, &image_bytes)
@@ -693,7 +696,10 @@ result = {
     
     // Save to file if requested
     if let Some(save_path) = &options.save_path {
-        let image_bytes = base64::decode(&plot_data["image_data"].as_str().unwrap_or_default())
+        let b64_data = plot_data["image_data"]
+            .as_str()
+            .ok_or("Plot result is missing 'image_data' or it is not a string")?;
+        let image_bytes = STANDARD.decode(b64_data)
             .map_err(|e| format!("Failed to decode image data: {}", e))?;
         
         std::fs::write(save_path, &image_bytes)
@@ -936,7 +942,10 @@ result = {
     
     // Save to file if requested
     if let Some(save_path) = &options.save_path {
-        let image_bytes = base64::decode(&plot_data["image_data"].as_str().unwrap_or_default())
+        let b64_data = plot_data["image_data"]
+            .as_str()
+            .ok_or("Plot result is missing 'image_data' or it is not a string")?;
+        let image_bytes = STANDARD.decode(b64_data)
             .map_err(|e| format!("Failed to decode image data: {}", e))?;
         
         std::fs::write(save_path, &image_bytes)
@@ -1007,7 +1016,7 @@ pub async fn create_interactive_dashboard(
             // Filter datasets belonging to this project
             true // Simplified - would check project association
         })
-        .map(|entry| (entry.key().clone(), entry.value().clone()))
+        .map(|entry| (*entry.key(), entry.value().clone()))
         .collect();
     
     if datasets.is_empty() {
@@ -1076,7 +1085,7 @@ pub async fn create_interactive_dashboard(
         .filter_map(|entry| {
             let job_guard = entry.value().blocking_lock();
             if job_guard.dataset_id == datasets[0].0 {
-                Some((entry.key().clone(), job_guard.clone()))
+                Some((*entry.key(), job_guard.clone()))
             } else {
                 None
             }

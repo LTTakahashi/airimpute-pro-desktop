@@ -4,20 +4,9 @@ import { Button } from '@/components/ui/Button';
 import { Tabs } from '@/components/ui/Tabs';
 import { cn } from '@/utils/cn';
 import { 
-  Sigma, 
-  Infinity, 
-  Square, 
-  Superscript,
-  Subscript,
-  Calculator,
-  Box,
-  Boxes,
-  Grid3x3,
-  Move3d,
   Undo,
   Redo,
   Save,
-  FileText,
   HelpCircle
 } from 'lucide-react';
 import { Tooltip } from '@/components/ui/Tooltip';

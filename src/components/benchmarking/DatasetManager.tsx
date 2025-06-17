@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
-import { Progress } from '../ui/Progress';
 import { Checkbox } from '../ui/Checkbox';
 import { 
   Database, 
@@ -43,7 +42,7 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({
   loading = false,
   className
 }) => {
-  const [showDetails, setShowDetails] = useState<string | null>(null);
+  const [showDetails] = useState<string | null>(null);
   const [generatingDataset, setGeneratingDataset] = useState(false);
 
   const toggleDataset = (datasetName: string) => {

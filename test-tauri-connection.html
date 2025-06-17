@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Tauri Connection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .pending { color: orange; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #f0f0f0;
+        }
+        pre {
+            background: #f9f9f9;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>AirImpute Pro - Tauri Connection Test</h1>
+    
+    <div class="test-section">
+        <h2>1. Basic Connectivity</h2>
+        <button onclick="testPing()">Test Ping</button>
+        <div id="ping-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>2. Python Bridge</h2>
+        <button onclick="testPythonBridge()">Test Python Bridge</button>
+        <div id="python-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>3. NumPy Test</h2>
+        <button onclick="testNumpy()">Test NumPy</button>
+        <div id="numpy-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>4. System Info</h2>
+        <button onclick="testSystemInfo()">Get System Info</button>
+        <div id="system-result"></div>
+    </div>
+
+    <script>
+        // Check if running in Tauri
+        if (window.__TAURI__) {
+            document.getElementById('ping-result').innerHTML = '<p class="success">✓ Running in Tauri environment</p>';
+        } else {
+            document.getElementById('ping-result').innerHTML = '<p class="error">✗ Not running in Tauri - open this file through the Tauri app</p>';
+        }
+
+        async function testPing() {
+            try {
+                const { invoke } = window.__TAURI__.tauri;
+                const result = await invoke('ping');
+                document.getElementById('ping-result').innerHTML = `<p class="success">✓ Ping successful: ${result}</p>`;
+            } catch (error) {
+                document.getElementById('ping-result').innerHTML = `<p class="error">✗ Ping failed: ${error}</p>`;
+            }
+        }
+
+        async function testPythonBridge() {
+            try {
+                const { invoke } = window.__TAURI__.tauri;
+                document.getElementById('python-result').innerHTML = '<p class="pending">Testing Python bridge...</p>';
+                const result = await invoke('check_python_bridge');
+                document.getElementById('python-result').innerHTML = `<p class="success">✓ Python bridge working:<br><pre>${result}</pre></p>`;
+            } catch (error) {
+                document.getElementById('python-result').innerHTML = `<p class="error">✗ Python bridge failed:<br><pre>${error}</pre></p>`;
+            }
+        }
+
+        async function testNumpy() {
+            try {
+                const { invoke } = window.__TAURI__.tauri;
+                document.getElementById('numpy-result').innerHTML = '<p class="pending">Testing NumPy...</p>';
+                const result = await invoke('test_numpy');
+                document.getElementById('numpy-result').innerHTML = `<p class="success">✓ NumPy test successful:<br><pre>${result}</pre></p>`;
+            } catch (error) {
+                document.getElementById('numpy-result').innerHTML = `<p class="error">✗ NumPy test failed:<br><pre>${error}</pre></p>`;
+            }
+        }
+
+        async function testSystemInfo() {
+            try {
+                const { invoke } = window.__TAURI__.tauri;
+                document.getElementById('system-result').innerHTML = '<p class="pending">Getting system info...</p>';
+                const result = await invoke('get_system_info');
+                document.getElementById('system-result').innerHTML = `<p class="success">✓ System info retrieved:<br><pre>${JSON.stringify(result, null, 2)}</pre></p>`;
+            } catch (error) {
+                document.getElementById('system-result').innerHTML = `<p class="error">✗ System info failed:<br><pre>${error}</pre></p>`;
+            }
+        }
+    </script>
+</body>
+</html>

@@ -70,7 +70,7 @@ const mockTauriState = {
     cache_memory_mb: 0,
     total_memory_mb: 0,
   },
-  eventListeners: new Map<string, Set<Function>>(),
+  eventListeners: new Map<string, Set<(...args: unknown[]) => void>>(),
 };
 
 // Mock file system operations
@@ -255,8 +255,8 @@ const mockInvoke = vi.fn(async (cmd: string, args?: any) => {
 });
 
 // Mock Tauri event system
-const mockEvent = {
-  listen: vi.fn((event: string, handler: Function) => {
+const mockEvent: any = {
+  listen: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
     if (!mockTauriState.eventListeners.has(event)) {
       mockTauriState.eventListeners.set(event, new Set());
     }
@@ -275,7 +275,7 @@ const mockEvent = {
     return Promise.resolve();
   }),
   
-  once: vi.fn((event: string, handler: Function) => {
+  once: vi.fn((event: string, handler: (...args: unknown[]) => void): Promise<() => void> => {
     const wrappedHandler = (payload: any) => {
       handler(payload);
       mockTauriState.eventListeners.get(event)?.delete(wrappedHandler);
@@ -286,7 +286,7 @@ const mockEvent = {
 
 // Mock file dialog with Windows path handling
 const mockDialog = {
-  open: vi.fn(async (options?: any) => {
+  open: vi.fn(async () => {
     // Return Windows-style paths on Windows
     if (IS_WINDOWS) {
       return 'C:\\mock\\path\\data.csv';
@@ -294,7 +294,7 @@ const mockDialog = {
     return '/mock/path/data.csv';
   }),
   
-  save: vi.fn(async (options?: any) => {
+  save: vi.fn(async () => {
     if (IS_WINDOWS) {
       return 'C:\\mock\\path\\output.csv';
     }
@@ -339,13 +339,13 @@ if (!global.crypto) {
 global.crypto.randomUUID = () => ('test-uuid-' + Math.random().toString(36).substring(7)) as `${string}-${string}-${string}-${string}-${string}`;
 
 // Setup performance monitoring for Windows
-let performanceWarnings: string[] = [];
+const performanceWarnings: string[] = [];
 
 beforeAll(() => {
   if (IS_WINDOWS) {
     // Monitor long-running operations
     const originalSetTimeout = global.setTimeout;
-    global.setTimeout = ((fn: Function, delay: number, ...args: any[]) => {
+    global.setTimeout = ((fn: (...args: unknown[]) => void, delay: number, ...args: any[]) => {
       if (delay > 10000) {
         performanceWarnings.push(`Long timeout detected: ${delay}ms`);
       }

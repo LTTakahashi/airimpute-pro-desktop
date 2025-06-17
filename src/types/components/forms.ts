@@ -3,7 +3,7 @@
  * Following IEEE standards for data input integrity
  */
 
-import { ScientificInputProps, ScientificConstraint } from './index';
+import type { ScientificInputProps, ScientificConstraint } from './index';
 
 // Numeric input with scientific constraints
 export interface NumericInputProps extends ScientificInputProps<number> {

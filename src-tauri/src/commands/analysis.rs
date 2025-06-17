@@ -5,12 +5,11 @@ use tauri::State;
 use ndarray::Array2;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-use tracing::{info, warn, error};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::state::AppState;
 use crate::error::{CommandError, CommandResult, AuditLogEntry};
-use crate::validation::InputSanitizer;
 // use crate::python::bridge::{PythonBridge, MissingPattern as BridgeMissingPattern};
 
 /// Comprehensive missing data pattern analysis
@@ -418,7 +417,7 @@ pub async fn compute_missing_patterns(
     info!("Computing missing patterns for dataset: {}", dataset_id);
     
     // Create audit log entry
-    let mut audit_entry = AuditLogEntry::new(
+    let audit_entry = AuditLogEntry::new(
         "compute_missing_patterns",
         &dataset_id
     );
@@ -443,8 +442,8 @@ async fn compute_missing_patterns_internal(
     state: &Arc<AppState>,
     dataset_id: String,
 ) -> CommandResult<MissingPatternAnalysis> {
-    // Validate and sanitize dataset ID
-    let sanitized_id = InputSanitizer::sanitize_string(&dataset_id);
+    // Get dataset from state - Uuid::parse_str provides sufficient validation
+    let sanitized_id = dataset_id;
     
     // Get dataset from state
     let dataset_uuid = Uuid::parse_str(&sanitized_id)
@@ -513,8 +512,7 @@ async fn compute_missing_patterns_internal(
     };
     
     // Extract spatial analysis if available
-    let spatial_analysis = if let Some(spatial) = analysis_result.get("spatial_analysis") {
-        Some(SpatialMissingAnalysis {
+    let spatial_analysis = analysis_result.get("spatial_analysis").map(|spatial| SpatialMissingAnalysis {
             spatial_autocorrelation: spatial["morans_i"].as_f64().unwrap_or(0.0),
             hotspots: serde_json::from_value(
                 spatial["hotspots"].clone()
@@ -523,10 +521,7 @@ async fn compute_missing_patterns_internal(
             anisotropy: serde_json::from_value(
                 spatial["anisotropy"].clone()
             ).ok(),
-        })
-    } else {
-        None
-    };
+        });
     
     // Generate method recommendations
     let recommendations = generate_method_recommendations(
@@ -638,7 +633,8 @@ async fn analyze_temporal_patterns_internal(
     state: &Arc<AppState>,
     dataset_id: String,
 ) -> CommandResult<TemporalPatternAnalysis> {
-    let sanitized_id = InputSanitizer::sanitize_string(&dataset_id);
+    // Get dataset from state - Uuid::parse_str provides sufficient validation
+    let sanitized_id = dataset_id;
     
     // Parse UUID and get dataset from DashMap
     let dataset_uuid = Uuid::parse_str(&sanitized_id)
@@ -677,7 +673,8 @@ async fn analyze_spatial_correlations_internal(
     state: &Arc<AppState>,
     dataset_id: String,
 ) -> CommandResult<SpatialCorrelationAnalysis> {
-    let sanitized_id = InputSanitizer::sanitize_string(&dataset_id);
+    // Get dataset from state - Uuid::parse_str provides sufficient validation
+    let sanitized_id = dataset_id;
     
     // Parse UUID and get dataset from DashMap
     let dataset_uuid = Uuid::parse_str(&sanitized_id)
@@ -722,7 +719,8 @@ async fn generate_quality_report_internal(
     state: &Arc<AppState>,
     dataset_id: String,
 ) -> CommandResult<QualityReport> {
-    let sanitized_id = InputSanitizer::sanitize_string(&dataset_id);
+    // Get dataset from state - Uuid::parse_str provides sufficient validation
+    let sanitized_id = dataset_id;
     
     // Parse UUID and get dataset from DashMap
     let dataset_uuid = Uuid::parse_str(&sanitized_id)
@@ -775,10 +773,8 @@ async fn perform_sensitivity_analysis_internal(
     state: &Arc<AppState>,
     job_id: String,
 ) -> CommandResult<SensitivityAnalysis> {
-    let sanitized_id = InputSanitizer::sanitize_string(&job_id);
-    
-    // Parse the job ID as UUID
-    let job_uuid = Uuid::parse_str(&sanitized_id)
+    // Parse the job ID as UUID - Uuid::parse_str provides sufficient validation
+    let job_uuid = Uuid::parse_str(&job_id)
         .map_err(|_| CommandError::InvalidParameter { 
             param: "job_id".to_string(),
             reason: "Invalid UUID format".to_string()
@@ -786,7 +782,7 @@ async fn perform_sensitivity_analysis_internal(
     
     // Get imputation job results from DashMap
     let job_entry = state.imputation_jobs.get(&job_uuid)
-        .ok_or_else(|| CommandError::DatasetNotFound { id: sanitized_id.clone() })?;
+        .ok_or_else(|| CommandError::DatasetNotFound { id: job_id.clone() })?;
     let job = job_entry.lock().await;
     
     let bridge = state.python_bridge.clone();

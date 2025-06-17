@@ -37,7 +37,6 @@ const DataImport: React.FC = () => {
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
 
-    const file = acceptedFiles[0];
     setError(null);
     setImporting(true);
     setProgress({ current: 0, total: 100, message: 'Reading file...' });

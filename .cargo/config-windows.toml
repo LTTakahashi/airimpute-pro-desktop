@@ -1,0 +1,39 @@
+# Windows-specific Cargo configuration for secure builds
+# Based on security analysis by Gemini
+
+[build]
+target-dir = "src-tauri/target"
+
+[target.x86_64-pc-windows-msvc]
+# Security-hardened linker flags
+rustflags = [
+    "-C", "link-arg=/DYNAMICBASE",     # ASLR (Address Space Layout Randomization)
+    "-C", "link-arg=/NXCOMPAT",        # Data Execution Prevention (DEP)
+    "-C", "link-arg=/guard:cf",        # Control Flow Guard
+    "-C", "link-arg=/HIGHENTROPYVA",   # High Entropy ASLR
+    "-C", "link-arg=/CETCOMPAT",       # Intel CET Shadow Stack
+    "-C", "target-feature=+crt-static", # Static CRT linking for self-contained exe
+    # NOTE: -Z stack-protector is an unstable feature and may change in future Rust versions
+    "-Z", "stack-protector=all"         # Stack protection
+]
+
+[target.x86_64-pc-windows-gnu]
+# For MinGW cross-compilation (if needed)
+linker = "x86_64-w64-mingw32-gcc"
+rustflags = [
+    "-C", "link-arg=-static-libgcc",
+    "-C", "link-arg=-static-libstdc++"
+]
+
+# Release profile optimizations
+[profile.release]
+opt-level = 3        # Maximum optimization
+lto = "fat"          # Enable Link-Time Optimization
+codegen-units = 1    # Maximize optimization opportunities
+panic = "abort"      # Smaller binary, immediately terminates on panic
+strip = true         # Strip debug symbols from the final binary
+
+[profile.release-with-debug]
+inherits = "release"
+strip = false
+debug = true

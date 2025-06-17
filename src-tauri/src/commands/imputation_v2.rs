@@ -1,7 +1,7 @@
 // Simplified imputation commands using the new Python bridge
 
 use tauri::{command, State, Window};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
@@ -11,10 +11,9 @@ use tokio::sync::Mutex;
 use std::collections::HashMap;
 
 use crate::state::AppState;
-use crate::python::{SafePythonBridge, PythonOperation};
+use crate::python::PythonOperation;
 use crate::core::imputation::{ImputationJob, JobStatus};
-use crate::error::simple_error::{AppError, Result as AppResult};
-use crate::core::progress_tracker::{ProgressManager, ProgressTracker};
+use ndarray::Array2;
 use crate::validation::data_validator::{DataValidator, ValidationConfig};
 
 /// Available imputation methods with descriptions
@@ -162,7 +161,7 @@ pub async fn run_imputation_v2(
     
     // Quick validation
     let validator = DataValidator::new(ValidationConfig::default());
-    let validation = validator.validate(&dataset.value());
+    let validation = validator.validate(dataset.value());
     
     if !validation.is_valid {
         let critical_errors: Vec<String> = validation.errors.iter()
@@ -261,10 +260,12 @@ async fn execute_imputation_v2(
     // Monitor progress in background
     let window_clone = window.clone();
     let job_id_str = job_id.to_string();
+    let state_clone = state.clone();
+    let tracker_id = tracker.get_id();
     let progress_task = tokio::spawn(async move {
         loop {
-            if let Some(update) = state.progress_manager.next_update().await {
-                if update.id == tracker.get_id() {
+            if let Some(update) = state_clone.progress_manager.next_update().await {
+                if update.id == tracker_id {
                     window_clone.emit("imputation:progress", json!({
                         "job_id": job_id_str,
                         "progress": update.percentage,
@@ -275,9 +276,7 @@ async fn execute_imputation_v2(
                 }
             }
             
-            if tracker.is_cancelled() {
-                break;
-            }
+            // TODO: Add cancellation check
             
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
@@ -310,7 +309,7 @@ async fn execute_imputation_v2(
     };
     
     // Execute imputation
-    match state.python_bridge.execute_operation(&operation, Some(&tracker)).await {
+    match state.python_bridge.execute_operation(&operation, None).await {
         Ok(result_json) => {
             match serde_json::from_str::<serde_json::Value>(&result_json) {
                 Ok(result) => {
@@ -321,7 +320,28 @@ async fn execute_imputation_v2(
                             job.status = JobStatus::Completed;
                             job.completed_at = Some(Utc::now());
                             job.progress = 1.0;
-                            job.result = Some(Arc::new(result.clone()));
+                            // Extract imputed data from result
+                            if let Some(data_arr) = result["data"].as_array() {
+                                let rows = data_arr.len();
+                                let cols = if rows > 0 {
+                                    data_arr[0].as_array().map(|a| a.len()).unwrap_or(0)
+                                } else {
+                                    0
+                                };
+                                
+                                let mut data_vec = Vec::with_capacity(rows * cols);
+                                for row in data_arr {
+                                    if let Some(row_arr) = row.as_array() {
+                                        for val in row_arr {
+                                            data_vec.push(val.as_f64().unwrap_or(f64::NAN));
+                                        }
+                                    }
+                                }
+                                
+                                if Array2::from_shape_vec((rows, cols), data_vec).is_ok() {
+                                    job.result_data = Some(result.clone());
+                                }
+                            }
                             
                             info!("Imputation completed successfully for job {}", job_id);
                         }
@@ -386,7 +406,7 @@ async fn handle_imputation_error(
     // Update job with error
     if let Some(job_arc) = state.imputation_jobs.get(&job_id) {
         let mut job = job_arc.lock().await;
-        job.status = JobStatus::Failed;
+        job.status = JobStatus::Failed(error_msg.to_string());
         job.completed_at = Some(Utc::now());
         job.error = Some(error_msg.to_string());
     }
@@ -444,8 +464,8 @@ pub async fn get_imputation_result(
         return Err("Job not completed".to_string());
     }
     
-    match &job.result {
-        Some(result) => Ok((**result).clone()),
+    match &job.result_data {
+        Some(result) => Ok(result.clone()),
         None => Err("No result available".to_string()),
     }
 }
@@ -462,7 +482,7 @@ pub async fn cancel_imputation(
     if let Some(job_arc) = state.imputation_jobs.get(&job_uuid) {
         let mut job = job_arc.lock().await;
         if matches!(job.status, JobStatus::Pending | JobStatus::Running) {
-            job.status = JobStatus::Failed;
+            job.status = JobStatus::Failed("Cancelled by user".to_string());
             job.error = Some("Cancelled by user".to_string());
             job.completed_at = Some(Utc::now());
             

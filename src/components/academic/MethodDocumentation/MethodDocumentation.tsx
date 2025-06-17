@@ -8,7 +8,6 @@ import { cn } from '@/utils/cn';
 import { 
   BookOpen, 
   Code, 
-  BarChart, 
   Clock,
   Zap,
   AlertCircle,

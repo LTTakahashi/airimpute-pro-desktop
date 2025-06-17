@@ -369,7 +369,7 @@ print(json.dumps(result))
             .into_iter()
             .filter_map(|e| e.ok())
         {
-            if entry.path().extension().map_or(false, |ext| ext == "pyc") {
+            if entry.path().extension().is_some_and(|ext| ext == "pyc") {
                 fs::remove_file(entry.path()).ok();
             }
         }
@@ -415,7 +415,7 @@ pub fn create_script_bundle(scripts_dir: &Path, output_path: &Path) -> Result<()
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
-        if path.is_file() && path.extension().map_or(false, |ext| ext == "py") {
+        if path.is_file() && path.extension().is_some_and(|ext| ext == "py") {
             let relative_path = path.strip_prefix(scripts_dir)?;
             zip.start_file(relative_path.to_string_lossy(), options)?;
             

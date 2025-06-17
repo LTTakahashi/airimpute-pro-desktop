@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { ScientificCardProps } from '@/types/components/layout';
+import type { ScientificCardProps } from '@/types/components/layout';
 import { cn } from '@/utils/cn';
 import { ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -28,7 +28,6 @@ export const ScientificCard: React.FC<ScientificCardProps> = ({
   className,
   'aria-label': ariaLabel,
   'aria-describedby': ariaDescribedBy,
-  uiMode = 'researcher',
   testId = 'scientific-card',
 }) => {
   const [internalCollapsed, setInternalCollapsed] = useState(false);

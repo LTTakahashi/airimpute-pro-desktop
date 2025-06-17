@@ -1,7 +1,7 @@
 import React from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
 import { Info } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, TooltipRoot } from '../ui/Tooltip';
+import { TooltipContent, TooltipProvider, TooltipTrigger, TooltipRoot } from '../ui/Tooltip';
 
 interface MetricSelectorProps {
   value: string;

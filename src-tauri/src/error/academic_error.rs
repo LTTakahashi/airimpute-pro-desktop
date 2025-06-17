@@ -5,7 +5,6 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::backtrace::Backtrace;
 use std::collections::HashMap;
-use std::fmt;
 use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
@@ -95,6 +94,18 @@ pub enum ResourceType {
     NetworkBandwidth,
 }
 
+impl std::fmt::Display for ResourceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResourceType::Memory => write!(f, "Memory"),
+            ResourceType::GpuMemory => write!(f, "GPU Memory"),
+            ResourceType::DiskSpace => write!(f, "Disk Space"),
+            ResourceType::ComputeTime => write!(f, "Compute Time"),
+            ResourceType::NetworkBandwidth => write!(f, "Network Bandwidth"),
+        }
+    }
+}
+
 /// Numerical error context for debugging
 #[derive(Debug, Clone, Default)]
 pub struct NumericalErrorContext {
@@ -151,6 +162,12 @@ pub struct GpuInfo {
     pub total_memory: u64,
     pub available_memory: u64,
     pub driver_version: String,
+}
+
+impl Default for ErrorContext {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ErrorContext {

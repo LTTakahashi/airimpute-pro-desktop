@@ -1,4 +1,4 @@
-import { MethodDocumentation } from './MethodDocumentation';
+import type { MethodDocumentation } from './MethodDocumentation';
 
 export const methodDocumentations: Record<string, MethodDocumentation> = {
   // Classical Methods

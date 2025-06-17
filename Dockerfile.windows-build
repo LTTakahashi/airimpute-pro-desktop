@@ -1,0 +1,96 @@
+# Secure Windows cross-compilation environment for AirImpute Pro
+# Uses pinned versions for reproducibility and security
+
+FROM rust:1.82-slim-bookworm
+
+# Metadata
+LABEL maintainer="AirImpute Team"
+LABEL description="Secure Windows cross-compilation environment"
+LABEL version="1.0.0"
+
+# Install system dependencies (without strict version pinning for better compatibility)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    xz-utils \
+    unzip \
+    jq \
+    git \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    build-essential \
+    python3 \
+    python3-pip \
+    python3-venv \
+    nodejs \
+    npm \
+    nsis \
+    osslsigncode \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Zig for cross-compilation (pinned version)
+ARG ZIG_VERSION=0.11.0
+# From https://ziglang.org/download/0.11.0/
+ARG ZIG_SHA256=2d00e789fec4f71790a6e7bf83ff91d564943c5ee843c5fd966efc474b423047
+
+RUN curl -L -o zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" && \
+    echo "${ZIG_SHA256}  zig.tar.xz" | sha256sum -c - && \
+    mkdir -p /opt/zig && \
+    tar -xJ -f zig.tar.xz -C /opt/zig --strip-components=1 && \
+    rm zig.tar.xz && \
+    ln -s /opt/zig/zig /usr/local/bin/zig
+
+# Add Zig to PATH
+ENV PATH="/opt/zig:${PATH}"
+
+# Verify Zig installation
+RUN zig version
+
+# Configure Rust toolchain as root
+RUN rustup default stable && \
+    rustup update && \
+    rustup target add x86_64-pc-windows-msvc
+
+# Install cargo tools (only essential for cross-compilation)
+RUN cargo install cargo-zigbuild --version 0.17.5
+
+# Skip Python security tools to avoid system package conflicts
+# These can be run separately in CI/CD with proper Python environment
+
+# Create non-root user for builds
+RUN useradd -m -u 1000 -s /bin/bash builder
+
+# Set up environment variables for cross-compilation
+ENV CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER="zig cc -target x86_64-windows-msvc"
+ENV CC_x86_64_pc_windows_msvc="zig cc -target x86_64-windows-msvc"
+ENV CXX_x86_64_pc_windows_msvc="zig c++ -target x86_64-windows-msvc"
+ENV AR_x86_64_pc_windows_msvc="zig ar"
+
+# Security: Set restrictive umask
+RUN echo "umask 0077" >> /home/builder/.bashrc
+
+# Create build directories with proper permissions
+RUN mkdir -p /build /cache && \
+    chown -R builder:builder /build /cache
+
+# Switch to non-root user
+USER builder
+WORKDIR /build
+
+# Configure Rust for builder user
+RUN rustup default stable && \
+    rustup target add x86_64-pc-windows-msvc
+
+# Set secure environment
+ENV CARGO_HOME=/cache/cargo
+ENV RUSTUP_HOME=/cache/rustup
+ENV PIP_CACHE_DIR=/cache/pip
+ENV NPM_CONFIG_CACHE=/cache/npm
+
+# Health check
+HEALTHCHECK --interval=5m --timeout=3s \
+  CMD zig version && rustc --version || exit 1
+
+# Default command
+CMD ["/bin/bash"]

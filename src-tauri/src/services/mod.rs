@@ -4,6 +4,7 @@ pub mod local_computation_cache;
 pub mod local_file_manager;
 pub mod local_profiler;
 pub mod memory_monitor;
+pub mod offline_resources;
 pub mod progress_service;
 pub mod recovery_service;
 pub mod update_checker;

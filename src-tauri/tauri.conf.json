@@ -16,7 +16,7 @@
       "all": false,
       "shell": {
         "all": false,
-        "open": true
+        "open": false
       },
       "fs": {
         "all": false,
@@ -24,14 +24,19 @@
         "writeFile": true,
         "readDir": true,
         "createDir": true,
-        "removeDir": true,
-        "removeFile": true,
+        "removeDir": false,
+        "removeFile": false,
         "renameFile": true,
         "exists": true,
-        "scope": ["$APPDATA/**", "$APPLOCAL/**", "$DOCUMENT/AirImpute/**", "$DOWNLOAD/**", "$TEMP/**"]
+        "scope": [
+          "$APPDATA/AirImputePro/**",
+          "$APPLOCAL/AirImputePro/**",
+          "$DOCUMENT/AirImpute/**",
+          "$TEMP/AirImputePro-*"
+        ]
       },
       "path": {
-        "all": true
+        "all": false
       },
       "dialog": {
         "all": false,
@@ -50,10 +55,10 @@
         "all": true
       },
       "globalShortcut": {
-        "all": true
+        "all": false
       },
       "os": {
-        "all": true
+        "all": false
       },
       "process": {
         "all": false,
@@ -63,7 +68,9 @@
       "protocol": {
         "all": false,
         "asset": true,
-        "assetScope": ["**"]
+        "assetScope": [
+          "**"
+        ]
       }
     },
     "bundle": {
@@ -96,7 +103,7 @@
       "windows": {
         "certificateThumbprint": null,
         "digestAlgorithm": "sha256",
-        "timestampUrl": "http://timestamp.digicert.com",
+        "timestampUrl": "https://timestamp.digicert.com",
         "wix": {
           "language": "en-US",
           "template": null,
@@ -116,17 +123,19 @@
           "headerImage": null,
           "sidebarImage": null,
           "installerIcon": null,
-          "installMode": "perMachine",
-          "languages": ["English"],
+          "installMode": "perUser",
+          "languages": [
+            "English"
+          ],
           "displayLanguageSelector": false
         },
         "webviewInstallMode": {
-          "type": "downloadBootstrapper"
+          "type": "embedBootstrapper"
         }
       }
     },
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost blob: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: https://ipc.localhost"
+      "csp": "default-src 'self'; img-src 'self' asset: https://asset.localhost blob: data:; style-src 'self'; script-src 'self'; connect-src 'self' ipc: https://ipc.localhost; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; font-src 'self' asset: https://asset.localhost"
     },
     "systemTray": {
       "iconPath": "icons/icon.png",
@@ -134,15 +143,7 @@
       "menuOnLeftClick": false
     },
     "updater": {
-      "active": false,
-      "dialog": true,
-      "pubkey": "",
-      "endpoints": [
-        "https://api.airimpute.pro/desktop/updates/{{target}}/{{current_version}}"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
+      "active": false
     },
     "windows": [
       {

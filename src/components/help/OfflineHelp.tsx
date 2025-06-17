@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HelpCircle, Book, Video, Mail, ChevronRight, Search, FileText, Download } from 'lucide-react';
+import { HelpCircle, ChevronRight, Search, FileText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -537,7 +537,7 @@ export const OfflineHelp: React.FC = () => {
               <div>
                 <p className="font-medium">Email Support</p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  support@airimpute.pro - Save this address for when you're online
+                  support@airimpute.pro - Save this address for when you&apos;re online
                 </p>
               </div>
               <div>

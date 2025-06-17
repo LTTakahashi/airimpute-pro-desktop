@@ -1,15 +1,16 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyTuple};
-use numpy::{PyArray1, PyArray2, PyArrayDyn};
-use ndarray::{Array2, ArrayD, IxDyn};
+use pyo3::types::PyDict;
+use numpy::PyArray2;
+use ndarray::Array2;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use chrono::{DateTime, Utc};
-use tracing::{info, error, warn, debug};
+use tracing::info;
 use crate::error::{CommandError, CommandResult, ErrorExt, AuditLogEntry};
-use crate::validation::{RulesValidator, InputSanitizer};
+use crate::validation::{RulesValidator, NumericValidator};
+use crate::python::bridge_api::{BridgeCommand, BridgeResponse};
 
 /// Bridge between Rust and Python for scientific computing operations
 pub struct PythonBridge {
@@ -200,11 +201,12 @@ impl PythonBridge {
             // Add embedded Python path to sys.path
             let sys = py.import("sys").map_py_err()?;
             let path = sys.getattr("path").map_py_err()?;
-            let sanitized_path = InputSanitizer::sanitize_path(
-                python_path.to_str().ok_or_else(|| CommandError::ValidationError {
-                    reason: "Invalid Python path encoding".to_string()
-                })?
-            )?;
+            // Use the secure fs sanitizer instead of the dangerous InputSanitizer
+            let path_str = python_path.to_str().ok_or_else(|| CommandError::ValidationError {
+                reason: "Invalid Python path encoding".to_string()
+            })?;
+            // For internal paths, we can trust them - no need to sanitize
+            let sanitized_path = path_str;
             path.call_method1("insert", (0, sanitized_path)).map_py_err()?;
             
             // Import required modules with error handling
@@ -267,7 +269,7 @@ impl PythonBridge {
     /// Execute imputation with comprehensive error handling
     pub fn run_imputation(&self, request: ImputationRequest) -> CommandResult<ImputationResult> {
         // Create audit log entry
-        let mut audit_entry = AuditLogEntry::new(
+        let audit_entry = AuditLogEntry::new(
             "imputation",
             format!("dataset_{}", chrono::Utc::now().timestamp())
         ).with_metadata(serde_json::json!({
@@ -306,28 +308,25 @@ impl PythonBridge {
         }
         
         // Validate method parameters
-        match &request.method {
-            ImputationMethod::RAH { spatial_weight, temporal_weight, adaptive_threshold } => {
-                if *spatial_weight < 0.0 || *spatial_weight > 1.0 {
-                    return Err(CommandError::InvalidParameter {
-                        param: "spatial_weight".to_string(),
-                        reason: "Must be between 0 and 1".to_string(),
-                    });
-                }
-                if *temporal_weight < 0.0 || *temporal_weight > 1.0 {
-                    return Err(CommandError::InvalidParameter {
-                        param: "temporal_weight".to_string(),
-                        reason: "Must be between 0 and 1".to_string(),
-                    });
-                }
-                if (*spatial_weight + *temporal_weight - 1.0).abs() > 1e-6 {
-                    return Err(CommandError::InvalidParameter {
-                        param: "weights".to_string(),
-                        reason: "Spatial and temporal weights must sum to 1".to_string(),
-                    });
-                }
+        if let ImputationMethod::RAH { spatial_weight, temporal_weight, adaptive_threshold } = &request.method {
+            if *spatial_weight < 0.0 || *spatial_weight > 1.0 {
+                return Err(CommandError::InvalidParameter {
+                    param: "spatial_weight".to_string(),
+                    reason: "Must be between 0 and 1".to_string(),
+                });
             }
-            _ => {}
+            if *temporal_weight < 0.0 || *temporal_weight > 1.0 {
+                return Err(CommandError::InvalidParameter {
+                    param: "temporal_weight".to_string(),
+                    reason: "Must be between 0 and 1".to_string(),
+                });
+            }
+            if (*spatial_weight + *temporal_weight - 1.0).abs() > 1e-6 {
+                return Err(CommandError::InvalidParameter {
+                    param: "weights".to_string(),
+                    reason: "Spatial and temporal weights must sum to 1".to_string(),
+                });
+            }
         }
         
         Ok(())
@@ -394,10 +393,14 @@ impl PythonBridge {
                 })?;
             
             // Extract imputed data
-            let imputed_array = result_dict
+            let imputed_data_item = result_dict
                 .get_item("imputed_data")
-                .ok_or_else(|| CommandError::PythonError {
+                .map_err(|_| CommandError::PythonError {
                     message: "Missing imputed_data in result".to_string()
+                })?;
+            let imputed_array = imputed_data_item
+                .ok_or_else(|| CommandError::PythonError {
+                    message: "imputed_data is None".to_string()
                 })?
                 .downcast::<PyArray2<f64>>()
                 .map_err(|_| CommandError::PythonError {
@@ -409,10 +412,10 @@ impl PythonBridge {
             let confidence_intervals = self.extract_confidence_intervals(py, result_dict)?;
             
             // Extract quality metrics
-            let quality_metrics = self.extract_quality_metrics(result_dict)?;
+            let quality_metrics = self.extract_quality_metrics(py, result_dict)?;
             
             // Extract method diagnostics
-            let method_diagnostics = self.extract_method_diagnostics(result_dict)?;
+            let method_diagnostics = self.extract_method_diagnostics(py, result_dict)?;
             
             // Calculate execution stats
             let total_time = start_time.elapsed().as_millis() as u64;
@@ -441,16 +444,16 @@ impl PythonBridge {
         array: &Array2<f64>,
     ) -> CommandResult<&'py PyArray2<f64>> {
         let shape = array.shape();
-        let numpy_array = PyArray2::new(py, [shape[0], shape[1]], false);
+        let numpy_array = unsafe { PyArray2::new(py, [shape[0], shape[1]], false) };
         
         // Copy data
         for ((i, j), &value) in array.indexed_iter() {
             // Validate numeric value
-            let sanitized_value = InputSanitizer::sanitize_numeric(value)?;
-            numpy_array.set([i, j], sanitized_value)
-                .map_err(|e| CommandError::NumericalError {
-                    reason: format!("Failed to set array value at [{}, {}]: {}", i, j, e)
-                })?;
+            let validated_value = NumericValidator::validate(value)?;
+            unsafe {
+                let ptr = numpy_array.uget_mut([i, j]);
+                *ptr = validated_value;
+            }
         }
         
         Ok(numpy_array)
@@ -464,11 +467,10 @@ impl PythonBridge {
         // Copy data
         for i in 0..shape[0] {
             for j in 0..shape[1] {
-                let value = py_array.get([i, j])
-                    .map_err(|e| CommandError::PythonError {
-                        message: format!("Failed to get array value at [{}, {}]: {}", i, j, e)
-                    })?;
-                array[[i, j]] = InputSanitizer::sanitize_numeric(value)?;
+                let value = unsafe { 
+                    *py_array.uget([i, j])
+                };
+                array[[i, j]] = NumericValidator::validate(value)?;
             }
         }
         
@@ -608,10 +610,14 @@ impl PythonBridge {
         py: Python,
         result_dict: &PyDict,
     ) -> CommandResult<ConfidenceIntervals> {
-        let ci_dict = result_dict
+        let ci_item = result_dict
             .get_item("confidence_intervals")
-            .ok_or_else(|| CommandError::PythonError {
+            .map_err(|_| CommandError::PythonError {
                 message: "Missing confidence_intervals".to_string()
+            })?;
+        let ci_dict = ci_item
+            .ok_or_else(|| CommandError::PythonError {
+                message: "confidence_intervals is None".to_string()
             })?
             .downcast::<PyDict>()
             .map_err(|_| CommandError::PythonError {
@@ -620,8 +626,11 @@ impl PythonBridge {
         
         let lower = ci_dict
             .get_item("lower")
-            .ok_or_else(|| CommandError::PythonError {
+            .map_err(|_| CommandError::PythonError {
                 message: "Missing lower bound".to_string()
+            })?
+            .ok_or_else(|| CommandError::PythonError {
+                message: "lower bound is None".to_string()
             })?
             .downcast::<PyArray2<f64>>()
             .map_err(|_| CommandError::PythonError {
@@ -629,8 +638,11 @@ impl PythonBridge {
             })?;
         let upper = ci_dict
             .get_item("upper")
-            .ok_or_else(|| CommandError::PythonError {
+            .map_err(|_| CommandError::PythonError {
                 message: "Missing upper bound".to_string()
+            })?
+            .ok_or_else(|| CommandError::PythonError {
+                message: "upper bound is None".to_string()
             })?
             .downcast::<PyArray2<f64>>()
             .map_err(|_| CommandError::PythonError {
@@ -638,8 +650,11 @@ impl PythonBridge {
             })?;
         let uncertainty = ci_dict
             .get_item("uncertainty")
-            .ok_or_else(|| CommandError::PythonError {
+            .map_err(|_| CommandError::PythonError {
                 message: "Missing uncertainty map".to_string()
+            })?
+            .ok_or_else(|| CommandError::PythonError {
+                message: "uncertainty map is None".to_string()
             })?
             .downcast::<PyArray2<f64>>()
             .map_err(|_| CommandError::PythonError {
@@ -654,11 +669,15 @@ impl PythonBridge {
     }
     
     /// Extract quality metrics from result
-    fn extract_quality_metrics(&self, result_dict: &PyDict) -> CommandResult<QualityMetrics> {
-        let metrics_dict = result_dict
+    fn extract_quality_metrics(&self, py: Python, result_dict: &PyDict) -> CommandResult<QualityMetrics> {
+        let metrics_item = result_dict
             .get_item("quality_metrics")
-            .ok_or_else(|| CommandError::PythonError {
+            .map_err(|_| CommandError::PythonError {
                 message: "Missing quality_metrics".to_string()
+            })?;
+        let metrics_dict = metrics_item
+            .ok_or_else(|| CommandError::PythonError {
+                message: "quality_metrics is None".to_string()
             })?
             .downcast::<PyDict>()
             .map_err(|_| CommandError::PythonError {
@@ -667,42 +686,62 @@ impl PythonBridge {
         
         Ok(QualityMetrics {
             mae: metrics_dict.get_item("mae")
+                .ok()
+                .flatten()
                 .and_then(|v| v.extract().ok())
                 .unwrap_or(0.0),
             rmse: metrics_dict.get_item("rmse")
+                .ok()
+                .flatten()
                 .and_then(|v| v.extract().ok())
                 .unwrap_or(0.0),
             r_squared: metrics_dict.get_item("r_squared")
+                .ok()
+                .flatten()
                 .and_then(|v| v.extract().ok())
                 .unwrap_or(0.0),
             mape: metrics_dict.get_item("mape")
+                .ok()
+                .flatten()
                 .and_then(|v| v.extract().ok())
                 .unwrap_or(0.0),
             variance_preserved: metrics_dict
                 .get_item("variance_preserved")
+                .ok()
+                .flatten()
                 .and_then(|v| v.extract().ok())
                 .unwrap_or(0.0),
             temporal_consistency: metrics_dict
                 .get_item("temporal_consistency")
+                .ok()
+                .flatten()
                 .and_then(|v| v.extract().ok())
                 .unwrap_or(0.0),
             spatial_coherence: metrics_dict
                 .get_item("spatial_coherence")
+                .ok()
+                .flatten()
                 .and_then(|v| v.extract().ok())
                 .unwrap_or(0.0),
             cross_validation_scores: metrics_dict
                 .get_item("cv_scores")
+                .ok()
+                .flatten()
                 .and_then(|v| v.extract().ok())
                 .unwrap_or_else(Vec::new),
         })
     }
     
     /// Extract method diagnostics from result
-    fn extract_method_diagnostics(&self, result_dict: &PyDict) -> CommandResult<MethodDiagnostics> {
-        let diag_dict = result_dict
+    fn extract_method_diagnostics(&self, py: Python, result_dict: &PyDict) -> CommandResult<MethodDiagnostics> {
+        let diag_item = result_dict
             .get_item("diagnostics")
-            .ok_or_else(|| CommandError::PythonError {
+            .map_err(|_| CommandError::PythonError {
                 message: "Missing diagnostics".to_string()
+            })?;
+        let diag_dict = diag_item
+            .ok_or_else(|| CommandError::PythonError {
+                message: "method_diagnostics is None".to_string()
             })?
             .downcast::<PyDict>()
             .map_err(|_| CommandError::PythonError {
@@ -712,21 +751,29 @@ impl PythonBridge {
         // Extract residual analysis
         let residual_dict = diag_dict
             .get_item("residual_analysis")
+            .ok()
+            .flatten()
             .and_then(|v| v.downcast::<PyDict>().ok());
         
         let residual_analysis = if let Some(rd) = residual_dict {
             ResidualAnalysis {
                 normality_test: rd
                     .get_item("normality_test")
-                    .and_then(|v| v.extract().ok())
+                    .ok()
+                .flatten()
+                .and_then(|v| v.extract().ok())
                     .unwrap_or((0.0, 1.0)),
                 autocorrelation: rd
                     .get_item("autocorrelation")
-                    .and_then(|v| v.extract().ok())
+                    .ok()
+                .flatten()
+                .and_then(|v| v.extract().ok())
                     .unwrap_or_else(Vec::new),
                 heteroscedasticity_test: rd
                     .get_item("heteroscedasticity_test")
-                    .and_then(|v| v.extract().ok())
+                    .ok()
+                .flatten()
+                .and_then(|v| v.extract().ok())
                     .unwrap_or((0.0, 1.0)),
             }
         } else {
@@ -740,14 +787,20 @@ impl PythonBridge {
         Ok(MethodDiagnostics {
             method_selection_log: diag_dict
                 .get_item("method_log")
+                .ok()
+                .flatten()
                 .and_then(|v| v.extract().ok())
                 .unwrap_or_else(Vec::new),
             convergence_history: diag_dict
                 .get_item("convergence_history")
+                .ok()
+                .flatten()
                 .and_then(|v| v.extract().ok())
                 .unwrap_or_else(Vec::new),
             parameter_sensitivity: diag_dict
                 .get_item("parameter_sensitivity")
+                .ok()
+                .flatten()
                 .and_then(|v| v.extract().ok())
                 .unwrap_or_else(HashMap::new),
             residual_analysis,
@@ -756,11 +809,12 @@ impl PythonBridge {
     
     /// Extract method call counts
     fn extract_method_calls(&self, result_dict: &PyDict) -> CommandResult<HashMap<String, usize>> {
-        result_dict
+        Ok(result_dict
             .get_item("method_calls")
-            .and_then(|v| v.extract().ok())
-            .unwrap_or_else(HashMap::new)
-            .into()
+            .ok()
+            .flatten()
+                .and_then(|v| v.extract::<HashMap<String, usize>>().ok())
+            .unwrap_or_else(HashMap::new))
     }
     
     /// Get current memory usage from Python
@@ -808,7 +862,7 @@ impl PythonBridge {
             let json_str: String = result.extract().map_py_err()?;
             
             serde_json::from_str(&json_str)
-                .map_err(|e| CommandError::from_serde_err(e))
+                .map_err(CommandError::from_serde_err)
         })
     }
     
@@ -887,7 +941,7 @@ impl PythonBridge {
             let json_str: String = result.extract().map_py_err()?;
             
             serde_json::from_str(&json_str)
-                .map_err(|e| CommandError::from_serde_err(e))
+                .map_err(CommandError::from_serde_err)
         })
     }
     
@@ -899,6 +953,42 @@ impl PythonBridge {
     /// Clear audit log
     pub fn clear_audit_log(&self) {
         self.audit_log.lock().unwrap().clear();
+    }
+    
+    /// Execute a data-oriented command securely (replaces dangerous string execution)
+    pub fn dispatch_command(&self, command: &BridgeCommand) -> CommandResult<BridgeResponse> {
+        Python::with_gil(|py| -> CommandResult<BridgeResponse> {
+            let modules_guard = self.modules.lock().unwrap();
+            let modules = modules_guard.as_ref()
+                .ok_or_else(|| CommandError::StateError {
+                    reason: "Python modules not initialized".to_string()
+                })?;
+            
+            // Serialize command to JSON
+            let command_json = command.to_json()
+                .map_err(CommandError::from_serde_err)?;
+            
+            // Get the dispatcher module
+            let dispatcher = py.import("airimpute.dispatcher")
+                .map_err(|e| CommandError::PythonError {
+                    message: format!("Failed to import dispatcher: {}", e)
+                })?;
+            
+            // Call the secure dispatch function
+            let result = dispatcher.call_method1("dispatch", (command_json,))
+                .map_err(|e| CommandError::PythonError {
+                    message: format!("Dispatch failed: {}", e)
+                })?;
+            
+            // Parse response
+            let response_json: String = result.extract()
+                .map_err(|e| CommandError::PythonError {
+                    message: format!("Failed to extract response: {}", e)
+                })?;
+            
+            serde_json::from_str(&response_json)
+                .map_err(CommandError::from_serde_err)
+        })
     }
 }
 

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { invoke } from '@tauri-apps/api/tauri'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '@/store'
 import { Card } from '@/components/ui/Card'
@@ -16,7 +15,7 @@ import {
   XCircle as XCircleIcon
 } from 'lucide-react'
 import { formatBytes, formatDuration } from '@/utils/format'
-import { cn } from '@/utils/cn'
+import { DebugPanel } from '@/components/debug/DebugPanel'
 
 export function Dashboard() {
   const navigate = useNavigate()
@@ -26,7 +25,6 @@ export function Dashboard() {
     memoryUsage,
     pythonReady,
     activeDatasetId,
-    setActiveDataset 
   } = useStore()
   
   const [stats, setStats] = useState({
@@ -352,6 +350,11 @@ export function Dashboard() {
           </p>
         </div>
       </Card>
+      
+      {/* Debug Panel - Only show in development */}
+      {process.env.NODE_ENV === 'development' && (
+        <DebugPanel />
+      )}
     </div>
   )
 }

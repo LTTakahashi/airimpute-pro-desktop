@@ -7,12 +7,9 @@ use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::task::{Context, Poll};
-use tokio::sync::{broadcast, watch, oneshot};
-use tokio::time::interval;
+use tokio::sync::{broadcast, watch};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use tracing::{debug, info, warn};
 
 /// Token for cooperative cancellation
 #[derive(Clone, Debug)]
@@ -66,7 +63,7 @@ impl CancellationToken {
 
     pub fn is_cancelled(&self) -> bool {
         self.inner.is_cancelled.load(Ordering::Acquire) ||
-        self.inner.parent.as_ref().map_or(false, |p| p.is_cancelled())
+        self.inner.parent.as_ref().is_some_and(|p| p.is_cancelled())
     }
 
     pub fn cancel(&self) {
@@ -526,7 +523,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::sleep;
+    
 
     #[tokio::test]
     async fn test_cancellation_token() {

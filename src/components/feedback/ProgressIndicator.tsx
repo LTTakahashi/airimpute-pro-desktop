@@ -5,12 +5,12 @@
  */
 
 import React, { useMemo, useEffect, useCallback } from 'react';
-import { ProgressIndicatorProps } from '@/types/components/feedback';
-import { ComputationProgress } from '@/types/components';
+import type { ProgressIndicatorProps } from '@/types/components/feedback';
+import type { ComputationProgress } from '@/types/components';
 import { announce, getScientificAriaProps } from '@/lib/accessibility';
 import { cn } from '@/utils/cn';
-import { X, Pause, Play } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { X } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 export const ProgressIndicator: React.FC<ProgressIndicatorProps> = ({
   progress,

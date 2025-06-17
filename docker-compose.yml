@@ -19,12 +19,13 @@ services:
       - RUST_LOG=debug
       - NODE_ENV=development
       - DISPLAY=${DISPLAY}
+      - WEBKIT_DISABLE_COMPOSITING_MODE=1
+      - GDK_BACKEND=x11
+      - RUSTFLAGS=-C link-arg=-lpython3.11
+      - PYO3_PYTHON=/usr/bin/python3.11
     stdin_open: true
     tty: true
-    command: npm run dev
-    # Enable X11 forwarding for GUI testing
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    command: npm run tauri dev
     network_mode: host
 
   # Test runner with coverage

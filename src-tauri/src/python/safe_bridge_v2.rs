@@ -4,17 +4,17 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use serde_json;
-use tokio::sync::oneshot;
 use tokio::time::timeout;
-use tracing::{debug, info, warn, error};
+use tracing::{debug, info, error};
 
 use crate::error::simple_error::AppError;
 use crate::error::CommandError;
 use crate::core::progress_tracker::ProgressTracker;
+use crate::security::validate_python_operation;
 
 /// Python operation request structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,7 +211,7 @@ def safe_execute(func, *args, **kwargs):
                 let airimpute = py.import("airimpute")?;
                 
                 // Get the imputation method
-                let method_class = airimpute.getattr(&method_name)?;
+                let method_class = airimpute.getattr(method_name.as_str())?;
                 
                 // Create instance with parameters
                 let kwargs = PyDict::new(py);
@@ -224,7 +224,7 @@ def safe_execute(func, *args, **kwargs):
                 let df = self.create_dataframe(py, data, column_names)?;
 
                 // Fit and transform
-                let _ = method.call_method1("fit", (df.clone(),))?;
+                let _ = method.call_method1("fit", (df,))?;
                 let result = method.call_method1("transform", (df,))?;
 
                 self.dataframe_to_vec(py, result)
@@ -242,7 +242,8 @@ def safe_execute(func, *args, **kwargs):
             Err(_) => {
                 error!("Method {} timed out", method_name);
                 Err(AppError::Timeout {
-                    message: format!("{} exceeded {} second timeout", method_name, self.config.timeout_seconds),
+                    operation: method_name,
+                    seconds: self.config.timeout_seconds,
                 })
             }
         }
@@ -308,6 +309,56 @@ def safe_execute(func, *args, **kwargs):
         operation: &PythonOperation,
         _progress_tracker: Option<Arc<Mutex<ProgressTracker>>>,
     ) -> Result<String, AppError> {
+        use crate::security::{validate_read_path, validate_write_path};
+        
+        // Validate operation against security allow-list
+        validate_python_operation(&operation.module, &operation.function)
+            .map_err(|e| AppError::PythonError {
+                message: e.to_string(),
+            })?;
+        
+        // Validate arguments for sensitive operations
+        // Short-term tactical fix: check both positional args and kwargs for path parameters
+        if operation.module == "airimpute.io" {
+            match operation.function.as_str() {
+                "load_from_file" | "read_csv" | "read_excel" => {
+                    // Check positional args
+                    if let Some(path_arg) = operation.args.get(0) {
+                        validate_read_path(path_arg).map_err(|e| AppError::PythonError {
+                            message: format!("Invalid file path: {}", e),
+                        })?;
+                    }
+                    // Check common keyword args for paths
+                    for key in ["path", "filepath", "filename", "filepath_or_buffer", "file"] {
+                        if let Some(path_arg) = operation.kwargs.get(key) {
+                            validate_read_path(path_arg).map_err(|e| AppError::PythonError {
+                                message: format!("Invalid file path in {}: {}", key, e),
+                            })?;
+                        }
+                    }
+                }
+                "save_to_file" | "write_csv" | "write_excel" => {
+                    // Check positional args (path usually second for write operations)
+                    if let Some(path_arg) = operation.args.get(0).or(operation.args.get(1)) {
+                        validate_write_path(path_arg).map_err(|e| AppError::PythonError {
+                            message: format!("Invalid file path: {}", e),
+                        })?;
+                    }
+                    // Check common keyword args for paths
+                    for key in ["path", "filepath", "filename", "filepath_or_buffer", "file", "output_path"] {
+                        if let Some(path_arg) = operation.kwargs.get(key) {
+                            validate_write_path(path_arg).map_err(|e| AppError::PythonError {
+                                message: format!("Invalid file path in {}: {}", key, e),
+                            })?;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        
+        // TODO: Long-term: Implement decorator-driven metadata approach for more scalable validation
+        
         self.ensure_initialized().await?;
 
         let timeout_ms = operation.timeout_ms.unwrap_or(300000); // 5 minutes default
@@ -319,29 +370,19 @@ def safe_execute(func, *args, **kwargs):
         let result = timeout(timeout_duration, async move {
             Python::with_gil(|py| -> Result<String, AppError> {
                 // Import the module
-                let module = py.import(&op_clone.module).map_err(|e| {
+                let module = py.import(op_clone.module.as_str()).map_err(|e| {
                     AppError::PythonError {
                         message: format!("Failed to import module '{}': {}", op_clone.module, e),
                     }
                 })?;
 
-                // Resolve the function path (handle patterns like "get_integration().impute")
-                let mut obj: &PyAny = module.as_ref();
-                for part in op_clone.function.split('.') {
-                    if part.ends_with("()") {
-                        // Call method without arguments
-                        let method_name = &part[..part.len() - 2];
-                        obj = obj.call_method0(method_name).map_err(|e| AppError::PythonError {
-                            message: format!("Failed to call method '{}' in '{}': {}", method_name, op_clone.function, e),
-                        })?;
-                    } else {
-                        // Get attribute
-                        obj = obj.getattr(part).map_err(|e| AppError::PythonError {
-                            message: format!("Attribute '{}' not found in '{}': {}", part, op_clone.function, e),
-                        })?;
+                // Simple function resolution - no complex paths allowed
+                let func = module.getattr(op_clone.function.as_str()).map_err(|e| {
+                    AppError::PythonError {
+                        message: format!("Function '{}' not found in module '{}': {}", 
+                            op_clone.function, op_clone.module, e),
                     }
-                }
-                let func = obj;
+                })?;
 
                 // Prepare arguments as a tuple
                 let args = PyTuple::new(py, &op_clone.args);
@@ -382,9 +423,12 @@ def safe_execute(func, *args, **kwargs):
     // Helper methods
 
     async fn ensure_initialized(&self) -> Result<(), AppError> {
-        let initialized = self.initialized.lock().unwrap();
-        if !*initialized {
-            drop(initialized);
+        let needs_init = {
+            let initialized = self.initialized.lock().unwrap();
+            !*initialized
+        };
+        
+        if needs_init {
             self.initialize().await?;
         }
         Ok(())
@@ -646,5 +690,83 @@ mod tests {
         let imputed = result.unwrap();
         assert_eq!(imputed.len(), 3);
         assert!(!imputed[1][1].is_nan());
+    }
+    
+    #[tokio::test]
+    async fn test_path_validation_in_io_operations() {
+        let bridge = SafePythonBridge::new(PythonConfig::default());
+        
+        // Test path traversal in positional arguments
+        let operation = PythonOperation {
+            module: "airimpute.io".to_string(),
+            function: "load_from_file".to_string(),
+            args: vec!["../../../etc/passwd".to_string()],
+            kwargs: Default::default(),
+            timeout_ms: Some(5000),
+        };
+        
+        let result = bridge.execute_operation(&operation, None).await;
+        assert!(result.is_err(), "Path traversal in args should be blocked");
+        
+        // Test path traversal in keyword arguments
+        let mut kwargs = HashMap::new();
+        kwargs.insert("filepath".to_string(), "/etc/shadow".to_string());
+        
+        let operation = PythonOperation {
+            module: "airimpute.io".to_string(),
+            function: "load_from_file".to_string(),
+            args: vec![],
+            kwargs,
+            timeout_ms: Some(5000),
+        };
+        
+        let result = bridge.execute_operation(&operation, None).await;
+        assert!(result.is_err(), "Path traversal in kwargs should be blocked");
+    }
+    
+    #[tokio::test]
+    async fn test_write_operation_path_validation() {
+        let bridge = SafePythonBridge::new(PythonConfig::default());
+        
+        // Test dangerous write paths
+        let operation = PythonOperation {
+            module: "airimpute.io".to_string(),
+            function: "save_to_file".to_string(),
+            args: vec!["~/.bashrc".to_string(), "{\"data\": \"malicious\"}".to_string()],
+            kwargs: Default::default(),
+            timeout_ms: Some(5000),
+        };
+        
+        let result = bridge.execute_operation(&operation, None).await;
+        assert!(result.is_err(), "Write to sensitive location should be blocked");
+    }
+    
+    #[tokio::test]
+    async fn test_module_function_validation() {
+        let bridge = SafePythonBridge::new(PythonConfig::default());
+        
+        // Test invalid module
+        let operation = PythonOperation {
+            module: "os".to_string(),
+            function: "system".to_string(),
+            args: vec!["rm -rf /".to_string()],
+            kwargs: Default::default(),
+            timeout_ms: Some(5000),
+        };
+        
+        let result = bridge.execute_operation(&operation, None).await;
+        assert!(result.is_err(), "Non-airimpute module should be blocked");
+        
+        // Test complex function path
+        let operation = PythonOperation {
+            module: "airimpute.analysis".to_string(),
+            function: "__import__('os').system".to_string(),
+            args: vec![],
+            kwargs: Default::default(),
+            timeout_ms: Some(5000),
+        };
+        
+        let result = bridge.execute_operation(&operation, None).await;
+        assert!(result.is_err(), "Complex function path should be blocked");
     }
 }

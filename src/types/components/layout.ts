@@ -3,7 +3,7 @@
  * Following IEEE HCI guidelines for scientific software interfaces
  */
 
-import { LayoutProps, UIMode } from './index';
+import type { LayoutProps, UIMode } from './index';
 
 // Main layout container
 export interface ScientificLayoutProps extends LayoutProps {

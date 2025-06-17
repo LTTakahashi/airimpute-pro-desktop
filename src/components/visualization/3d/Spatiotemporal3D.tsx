@@ -2,20 +2,16 @@ import React, { useRef, useMemo, useState, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { 
   OrbitControls, 
-  PerspectiveCamera, 
   Html,
   Billboard,
   Text,
-  Box,
   Sphere,
-  Line,
   Plane
 } from '@react-three/drei';
 import * as THREE from 'three';
 import { useSpring, animated } from '@react-spring/three';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Select } from '@/components/ui/Select';
 import { Slider } from '@/components/ui/Slider';
 import { Badge } from '@/components/ui/Badge';
 import { cn } from '@/utils/cn';
@@ -24,9 +20,6 @@ import {
   Pause, 
   RotateCcw, 
   Download, 
-  Settings,
-  Maximize2,
-  Grid3x3,
   Eye,
   EyeOff
 } from 'lucide-react';
@@ -414,11 +407,10 @@ export const Spatiotemporal3D: React.FC<Spatiotemporal3DProps> = ({
   timeRange,
   currentTime,
   pollutant,
-  interpolation = { type: 'idw' },
   showUncertainty: initialShowUncertainty = true,
   showGrid: initialShowGrid = true,
   showLabels: initialShowLabels = true,
-  colorScale = defaultColorScales[pollutant] || defaultColorScales.default,
+  colorScale = (defaultColorScales as any)[pollutant] || defaultColorScales.default,
   valueRange = [0, 100],
   onTimeChange,
   onStationClick,
@@ -435,7 +427,7 @@ export const Spatiotemporal3D: React.FC<Spatiotemporal3DProps> = ({
   const [selectedTime, setSelectedTime] = useState(currentTime || timeRange[0]);
   const [showGrid, setShowGrid] = useState(initialShowGrid);
   const [showLabels, setShowLabels] = useState(initialShowLabels);
-  const [showUncertainty, setShowUncertainty] = useState(initialShowUncertainty);
+  const [showUncertainty] = useState(initialShowUncertainty);
   
   const animationRef = useRef<number>();
   const canvasRef = useRef<HTMLCanvasElement>(null);

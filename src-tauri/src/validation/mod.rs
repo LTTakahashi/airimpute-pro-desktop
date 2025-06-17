@@ -173,7 +173,7 @@ impl Default for ValidationRules {
 
 /// Rules-based validator for comprehensive validation
 pub struct RulesValidator {
-    rules: ValidationRules,
+    pub rules: ValidationRules,
 }
 
 impl RulesValidator {
@@ -320,13 +320,13 @@ impl RulesValidator {
     
     /// Validate spatial coordinates
     pub fn validate_coordinates(lat: f64, lon: f64) -> CommandResult<()> {
-        if lat < -90.0 || lat > 90.0 {
+        if !(-90.0..=90.0).contains(&lat) {
             return Err(CommandError::ValidationError {
                 reason: format!("Invalid latitude: {} (must be between -90 and 90)", lat),
             });
         }
         
-        if lon < -180.0 || lon > 180.0 {
+        if !(-180.0..=180.0).contains(&lon) {
             return Err(CommandError::ValidationError {
                 reason: format!("Invalid longitude: {} (must be between -180 and 180)", lon),
             });
@@ -354,56 +354,31 @@ impl RulesValidator {
     }
 }
 
-/// Input sanitizer for Python bridge
-pub struct InputSanitizer;
+/// Safe numeric validator
+pub struct NumericValidator;
 
-impl InputSanitizer {
-    /// Sanitize string input for Python execution
-    pub fn sanitize_string(input: &str) -> String {
-        // Remove potential code injection patterns
-        input
-            .replace("__", "_")
-            .replace("eval", "")
-            .replace("exec", "")
-            .replace("import", "")
-            .replace("open", "")
-            .replace("file", "")
-            .replace("input", "")
-            .replace("raw_input", "")
-            .replace("compile", "")
-            .replace("globals", "")
-            .replace("locals", "")
-            .chars()
-            .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == '.' || *c == ' ')
-            .collect()
-    }
-    
-    /// Sanitize file path
-    pub fn sanitize_path(path: &str) -> CommandResult<String> {
-        // Remove any path traversal attempts
-        let cleaned = path
-            .replace("..", "")
-            .replace("~", "")
-            .replace("//", "/");
-        
-        // Ensure path doesn't start with system directories
-        let forbidden_prefixes = vec!["/etc", "/sys", "/proc", "/dev", "/boot"];
-        for prefix in forbidden_prefixes {
-            if cleaned.starts_with(prefix) {
-                return Err(CommandError::ValidationError {
-                    reason: format!("Access to system directory denied: {}", prefix),
-                });
-            }
-        }
-        
-        Ok(cleaned)
-    }
-    
-    /// Sanitize numeric input
-    pub fn sanitize_numeric(value: f64) -> CommandResult<f64> {
-        if value.is_nan() || value.is_infinite() {
+impl NumericValidator {
+    /// Validate numeric input
+    pub fn validate(value: f64) -> CommandResult<f64> {
+        if value.is_nan() {
             return Err(CommandError::ValidationError {
-                reason: "Invalid numeric value: NaN or Infinity".to_string(),
+                reason: "Invalid numeric value: NaN".to_string(),
+            });
+        }
+        if value.is_infinite() {
+            return Err(CommandError::ValidationError {
+                reason: "Invalid numeric value: Infinity".to_string(),
+            });
+        }
+        Ok(value)
+    }
+    
+    /// Validate numeric range
+    pub fn validate_range(value: f64, min: f64, max: f64) -> CommandResult<f64> {
+        let value = Self::validate(value)?;
+        if value < min || value > max {
+            return Err(CommandError::ValidationError {
+                reason: format!("Value {} is outside valid range [{}, {}]", value, min, max),
             });
         }
         Ok(value)

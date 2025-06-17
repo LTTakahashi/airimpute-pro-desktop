@@ -3,7 +3,7 @@
  * Following IEEE visualization standards for scientific data
  */
 
-import { TimeSeriesDataPoint, CorrelationMatrix, VisualizationProps } from './index';
+import type { TimeSeriesDataPoint, CorrelationMatrix, VisualizationProps } from './index';
 
 // Re-export for convenience
 export type { TimeSeriesDataPoint, CorrelationMatrix };

@@ -143,18 +143,19 @@ export const OfflineCitationManager: React.FC<OfflineCitationManagerProps> = ({
       case 'bibtex':
         return citation.bibtex;
       
-      case 'apa':
+      case 'apa': {
         const apaAuthors = citation.authors.length > 2
           ? `${citation.authors[0]} et al.`
           : citation.authors.join(' & ');
         return `${apaAuthors} (${citation.year}). ${citation.title}. ${citation.venue || 'Unpublished'}.${citation.doi ? ` https://doi.org/${citation.doi}` : ''}`;
+      }
       
-      case 'mla':
+      case 'mla': {
         const mlaAuthors = citation.authors.length > 2
           ? `${citation.authors[0]}, et al.`
           : citation.authors.join(', and ');
         return `${mlaAuthors}. "${citation.title}." ${citation.venue || 'Unpublished'}, ${citation.year}.${citation.doi ? ` DOI: ${citation.doi}` : ''}`;
-      
+      }
       default:
         return citation.bibtex;
     }

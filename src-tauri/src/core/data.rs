@@ -1,10 +1,9 @@
-use ndarray::{Array2, ArrayView2};
+use ndarray::Array2;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
-use std::sync::Arc;
-use anyhow::{Result, Context};
+use anyhow::Result;
 
 /// Core dataset structure for scientific computing
 #[derive(Debug, Clone)]
@@ -419,7 +418,7 @@ impl DataValidation {
     /// Validate dataset comprehensively
     pub fn validate(dataset: &Dataset) -> Result<Self> {
         let mut issues = Vec::new();
-        let mut warnings = Vec::new();
+        let warnings = Vec::new();
         
         let total_values = dataset.rows() * dataset.columns();
         let mut missing_values = 0;
@@ -427,7 +426,7 @@ impl DataValidation {
         let mut suspicious_values = 0;
         
         // Check each value
-        for (i, j, &value) in dataset.data.indexed_iter() {
+        for ((i, j), &value) in dataset.data.indexed_iter() {
             if value.is_nan() {
                 missing_values += 1;
             } else if let Some(var) = dataset.variables.get(j) {

@@ -1,10 +1,15 @@
 pub mod bridge;
+pub mod bridge_api;
 pub mod embedded_runtime;
 pub mod safe_bridge;
 pub mod safe_bridge_v2;
+pub mod arrow_bridge;
+
+#[cfg(test)]
+mod test_bridge;
 
 // Re-export commonly used types
-pub use safe_bridge_v2::{SafePythonBridge, PythonOperation, PythonConfig};
+pub use safe_bridge_v2::PythonOperation;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -67,9 +72,25 @@ impl PythonRuntime {
         Python::with_gil(|py| {
             let sys = py.import("sys")?;
             let path = sys.getattr("path")?;
-            path.call_method1("insert", (0, scripts_path.to_str().unwrap()))?;
+            let scripts_path_str = scripts_path.to_str()
+                .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Python scripts path contains non-UTF-8 characters"))?;
+            path.call_method1("insert", (0, scripts_path_str))?;
+            
+            // Also add the src/python directory for our fixes
+            let python_src_path = exe_dir.join("src").join("python");
+            let python_src_path_str = python_src_path.to_str()
+                .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Python source path contains non-UTF-8 characters"))?;
+            path.call_method1("insert", (0, python_src_path_str))?;
+            
+            // CRITICAL: Import GI version fix BEFORE any other imports
+            // This prevents libsoup3 from being loaded
+            match py.import("gi_version_fix") {
+                Ok(_) => info!("GI version fix applied successfully"),
+                Err(e) => info!("GI version fix not needed or failed: {}", e),
+            }
+            
             Ok::<(), PyErr>(())
-        })?;
+        }).context("Failed to initialize Python paths")?;
         
         // Create bridge
         let bridge = PythonBridge::new(&scripts_path)?;
@@ -103,7 +124,7 @@ impl PythonRuntime {
             ];
             
             for package in &required_packages {
-                match py.import(package) {
+                match py.import(*package) {
                     Ok(_) => debug!("Package {} is available", package),
                     Err(_) => {
                         warn!("Package {} is missing", package);
@@ -125,7 +146,8 @@ impl PythonRuntime {
         })
     }
     
-    /// Execute Python code (for development/debugging)
+    /// Execute Python code (for development/debugging ONLY)
+    #[cfg(debug_assertions)]
     pub async fn execute(&self, code: &str) -> Result<String> {
         let status = self.status.lock().await.clone();
         if status != RuntimeStatus::Ready {

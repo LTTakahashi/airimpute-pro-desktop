@@ -3,14 +3,11 @@
     windows_subsystem = "windows"
 )]
 
-#[macro_use]
-extern crate serde_json;
-
 use mimalloc::MiMalloc;
 use std::sync::Arc;
 use tauri::{
     CustomMenuItem, Manager, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem,
-    WindowEvent, GlobalShortcutManager, GlobalWindowEvent, SystemTraySubmenu,
+    WindowEvent, GlobalWindowEvent, SystemTraySubmenu,
 };
 use tracing::{info, error, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -20,6 +17,7 @@ mod core;
 mod db;
 mod error;
 mod python;
+mod security;
 mod services;
 mod state;
 mod utils;
@@ -32,6 +30,19 @@ use crate::state::{AppState, AppStateManager};
 static GLOBAL: MiMalloc = MiMalloc;
 
 fn main() {
+    // Windows security: Prevent DLL hijacking - must be first!
+    #[cfg(target_os = "windows")]
+    {
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn SetDefaultDllDirectories(flags: u32) -> i32;
+        }
+        const LOAD_LIBRARY_SEARCH_SYSTEM32: u32 = 0x00000800;
+        unsafe {
+            SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32);
+        }
+    }
+    
     // Initialize tracing for professional logging
     initialize_logging();
     
@@ -51,120 +62,259 @@ fn run_app() -> anyhow::Result<()> {
     // Create system tray
     let system_tray = create_system_tray();
     
-    // Build Tauri application
-    tauri::Builder::default()
-        .system_tray(system_tray)
-        .on_system_tray_event(handle_system_tray_event)
-        .setup(|app| {
-            // Initialize application state
-            let state = initialize_app_state(app)?;
-            app.manage(state);
-            
-            // Setup main window
-            setup_main_window(app)?;
-            
-            // Register global shortcuts
-            register_global_shortcuts(app)?;
-            
-            // Initialize background services
-            initialize_background_services(app)?;
-            
-            // Perform startup checks
-            perform_startup_checks(app)?;
-            
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            // Data Management Commands
-            commands::data::load_dataset,
-            commands::data::save_dataset,
-            commands::data::validate_dataset,
-            commands::data::get_dataset_statistics,
-            commands::data::preview_dataset,
-            commands::data::import_from_multiple_sources,
-            
-            // Imputation Commands
-            commands::imputation::run_imputation,
-            commands::imputation::run_batch_imputation,
-            commands::imputation::get_available_methods,
-            commands::imputation::estimate_processing_time,
-            commands::imputation::validate_imputation_results,
-            commands::imputation::compare_methods,
-            commands::imputation::get_method_documentation,
-            
-            // Imputation V2 Commands (New Integration)
-            commands::imputation_v2::get_imputation_methods,
-            commands::imputation_v2::validate_imputation_data,
-            commands::imputation_v2::run_imputation_v2,
-            commands::imputation_v2::get_imputation_status,
-            commands::imputation_v2::get_imputation_result,
-            commands::imputation_v2::cancel_imputation,
-            commands::imputation_v2::estimate_imputation_time,
-            
-            // Analysis Commands  
-            commands::analysis::compute_missing_patterns,
-            commands::analysis::analyze_temporal_patterns,
-            commands::analysis::analyze_spatial_correlations,
-            commands::analysis::generate_quality_report,
-            commands::analysis::perform_sensitivity_analysis,
-            
-            // Export Commands
-            commands::export::export_to_csv,
-            commands::export::export_to_excel,
-            commands::export::export_to_netcdf,
-            commands::export::export_to_hdf5,
-            commands::export::generate_latex_report,
-            commands::export::generate_publication_package,
-            
-            // Visualization Commands
-            commands::visualization::generate_missing_pattern_plot,
-            commands::visualization::generate_time_series_plot,
-            commands::visualization::generate_correlation_matrix,
-            commands::visualization::generate_uncertainty_bands,
-            commands::visualization::create_interactive_dashboard,
-            
-            // Settings Commands
-            commands::settings::get_user_preferences,
-            commands::settings::update_user_preferences,
-            commands::settings::get_computation_settings,
-            commands::settings::update_computation_settings,
-            commands::settings::reset_to_defaults,
-            
-            // System Commands
-            commands::system::get_system_info,
-            commands::system::check_python_runtime,
-            commands::system::get_memory_usage,
-            commands::system::clear_cache,
-            commands::system::run_diagnostics,
-            
-            // Project Management
-            commands::project::create_project,
-            commands::project::open_project,
-            commands::project::save_project,
-            commands::project::get_recent_projects,
-            commands::project::archive_project,
-            
-            // Benchmark Commands
-            commands::benchmark::get_benchmark_datasets,
-            commands::benchmark::run_benchmark,
-            commands::benchmark::get_benchmark_results,
-            commands::benchmark::export_benchmark_results,
-            commands::benchmark::generate_reproducibility_certificate,
-            
-            // Publication Commands
-            commands::publication::save_report,
-            commands::publication::load_report,
-            commands::publication::list_reports,
-            commands::publication::render_latex,
-            commands::publication::export_report,
-            commands::publication::import_bibtex,
-            commands::publication::format_citation,
-            commands::publication::generate_bibliography,
-            commands::publication::get_report_templates,
-        ])
-        .on_window_event(handle_window_event)
-        .run(tauri::generate_context!())
-        .map_err(|e| anyhow::anyhow!("Failed to run application: {}", e))?;
+    // Build the app with conditional command handlers
+    #[cfg(debug_assertions)]
+    {
+        tauri::Builder::default()
+            .system_tray(system_tray)
+            .on_system_tray_event(handle_system_tray_event)
+            .setup(|app| {
+                let state = initialize_app_state(app)?;
+                app.manage(state);
+                setup_main_window(app)?;
+                register_global_shortcuts(app)?;
+                initialize_background_services(app)?;
+                perform_startup_checks(app)?;
+                Ok(())
+            })
+            .invoke_handler(tauri::generate_handler![
+        // Debug Commands (for testing)
+        commands::debug::ping,
+        commands::debug::check_python_bridge,
+        commands::debug::test_numpy,
+        
+        // Data Management Commands
+        commands::data::load_dataset,
+        commands::data::save_dataset,
+        commands::data::validate_dataset,
+        commands::data::get_dataset_statistics,
+        commands::data::preview_dataset,
+        commands::data::import_from_multiple_sources,
+        
+        // Imputation Commands
+        commands::imputation::run_imputation,
+        commands::imputation::run_batch_imputation,
+        commands::imputation::get_available_methods,
+        commands::imputation::estimate_processing_time,
+        commands::imputation::validate_imputation_results,
+        commands::imputation::compare_methods,
+        commands::imputation::get_imputation_method_documentation,
+        
+        // Imputation V2 Commands (New Integration)
+        commands::imputation_v2::get_imputation_methods,
+        commands::imputation_v2::validate_imputation_data,
+        commands::imputation_v2::run_imputation_v2,
+        commands::imputation_v2::get_imputation_status,
+        commands::imputation_v2::get_imputation_result,
+        commands::imputation_v2::cancel_imputation,
+        commands::imputation_v2::estimate_imputation_time,
+        
+        // Imputation V3 Commands (Arrow-based High Performance)
+        commands::imputation_v3::initialize_worker_pool,
+        commands::imputation_v3::run_imputation_v3,
+        commands::imputation_v3::get_imputation_status_v3,
+        commands::imputation_v3::cancel_imputation_v3,
+        commands::imputation_v3::get_imputation_methods_v3,
+        commands::imputation_v3::check_worker_health,
+        
+        // Analysis Commands  
+        commands::analysis::compute_missing_patterns,
+        commands::analysis::analyze_temporal_patterns,
+        commands::analysis::analyze_spatial_correlations,
+        commands::analysis::generate_quality_report,
+        commands::analysis::perform_sensitivity_analysis,
+        
+        // Export Commands
+        commands::export::export_to_csv,
+        commands::export::export_to_excel,
+        commands::export::export_to_netcdf,
+        commands::export::export_to_hdf5,
+        commands::export::generate_latex_report,
+        commands::export::generate_publication_package,
+        
+        // Visualization Commands
+        commands::visualization::generate_missing_pattern_plot,
+        commands::visualization::generate_time_series_plot,
+        commands::visualization::generate_correlation_matrix,
+        commands::visualization::generate_uncertainty_bands,
+        commands::visualization::create_interactive_dashboard,
+        
+        // Settings Commands
+        commands::settings::get_user_preferences,
+        commands::settings::update_user_preferences,
+        commands::settings::get_computation_settings,
+        commands::settings::update_computation_settings,
+        commands::settings::reset_to_defaults,
+        
+        // System Commands
+        commands::system::get_system_info,
+        commands::system::check_python_runtime,
+        commands::system::get_memory_usage,
+        commands::system::clear_cache,
+        commands::system::run_diagnostics,
+        
+        // Project Management
+        commands::project::create_project,
+        commands::project::open_project,
+        commands::project::save_project,
+        commands::project::get_recent_projects,
+        commands::project::archive_project,
+        
+        // Benchmark Commands
+        commands::benchmark::get_benchmark_datasets,
+        commands::benchmark::run_benchmark,
+        commands::benchmark::get_benchmark_results,
+        commands::benchmark::export_benchmark_results,
+        commands::benchmark::generate_reproducibility_certificate,
+        
+        // Publication Commands
+        commands::publication::save_report,
+        commands::publication::load_report,
+        commands::publication::list_reports,
+        commands::publication::render_latex,
+        commands::publication::export_report,
+        commands::publication::import_bibtex,
+        commands::publication::format_citation,
+        commands::publication::generate_bibliography,
+        commands::publication::get_report_templates,
+        
+        // Help Commands (Offline)
+        commands::help::search_help,
+        commands::help::get_method_documentation,
+        commands::help::list_tutorials,
+        commands::help::get_tutorial,
+        commands::help::get_offline_status,
+        commands::help::get_quick_start_guide,
+        commands::help::get_sample_datasets,
+    ])
+    .on_window_event(handle_window_event)
+    .run(tauri::generate_context!())
+    .map_err(|e| anyhow::anyhow!("Failed to run application: {}", e))?;
+    }
+    
+    #[cfg(not(debug_assertions))]
+    {
+        tauri::Builder::default()
+            .system_tray(system_tray)
+            .on_system_tray_event(handle_system_tray_event)
+            .setup(|app| {
+                let state = initialize_app_state(app)?;
+                app.manage(state);
+                setup_main_window(app)?;
+                register_global_shortcuts(app)?;
+                initialize_background_services(app)?;
+                perform_startup_checks(app)?;
+                Ok(())
+            })
+            .invoke_handler(tauri::generate_handler![
+        // Data Management Commands
+        commands::data::load_dataset,
+        commands::data::save_dataset,
+        commands::data::validate_dataset,
+        commands::data::get_dataset_statistics,
+        commands::data::preview_dataset,
+        commands::data::import_from_multiple_sources,
+        
+        // Imputation Commands
+        commands::imputation::run_imputation,
+        commands::imputation::run_batch_imputation,
+        commands::imputation::get_available_methods,
+        commands::imputation::estimate_processing_time,
+        commands::imputation::validate_imputation_results,
+        commands::imputation::compare_methods,
+        commands::imputation::get_imputation_method_documentation,
+        
+        // Imputation V2 Commands (New Integration)
+        commands::imputation_v2::get_imputation_methods,
+        commands::imputation_v2::validate_imputation_data,
+        commands::imputation_v2::run_imputation_v2,
+        commands::imputation_v2::get_imputation_status,
+        commands::imputation_v2::get_imputation_result,
+        commands::imputation_v2::cancel_imputation,
+        commands::imputation_v2::estimate_imputation_time,
+        
+        // Imputation V3 Commands (Arrow-based High Performance)
+        commands::imputation_v3::initialize_worker_pool,
+        commands::imputation_v3::run_imputation_v3,
+        commands::imputation_v3::get_imputation_status_v3,
+        commands::imputation_v3::cancel_imputation_v3,
+        commands::imputation_v3::get_imputation_methods_v3,
+        commands::imputation_v3::check_worker_health,
+        
+        // Analysis Commands  
+        commands::analysis::compute_missing_patterns,
+        commands::analysis::analyze_temporal_patterns,
+        commands::analysis::analyze_spatial_correlations,
+        commands::analysis::generate_quality_report,
+        commands::analysis::perform_sensitivity_analysis,
+        
+        // Export Commands
+        commands::export::export_to_csv,
+        commands::export::export_to_excel,
+        commands::export::export_to_netcdf,
+        commands::export::export_to_hdf5,
+        commands::export::generate_latex_report,
+        commands::export::generate_publication_package,
+        
+        // Visualization Commands
+        commands::visualization::generate_missing_pattern_plot,
+        commands::visualization::generate_time_series_plot,
+        commands::visualization::generate_correlation_matrix,
+        commands::visualization::generate_uncertainty_bands,
+        commands::visualization::create_interactive_dashboard,
+        
+        // Settings Commands
+        commands::settings::get_user_preferences,
+        commands::settings::update_user_preferences,
+        commands::settings::get_computation_settings,
+        commands::settings::update_computation_settings,
+        commands::settings::reset_to_defaults,
+        
+        // System Commands
+        commands::system::get_system_info,
+        commands::system::check_python_runtime,
+        commands::system::get_memory_usage,
+        commands::system::clear_cache,
+        commands::system::run_diagnostics,
+        
+        // Project Management
+        commands::project::create_project,
+        commands::project::open_project,
+        commands::project::save_project,
+        commands::project::get_recent_projects,
+        commands::project::archive_project,
+        
+        // Benchmark Commands
+        commands::benchmark::get_benchmark_datasets,
+        commands::benchmark::run_benchmark,
+        commands::benchmark::get_benchmark_results,
+        commands::benchmark::export_benchmark_results,
+        commands::benchmark::generate_reproducibility_certificate,
+        
+        // Publication Commands
+        commands::publication::save_report,
+        commands::publication::load_report,
+        commands::publication::list_reports,
+        commands::publication::render_latex,
+        commands::publication::export_report,
+        commands::publication::import_bibtex,
+        commands::publication::format_citation,
+        commands::publication::generate_bibliography,
+        commands::publication::get_report_templates,
+        
+        // Help Commands (Offline)
+        commands::help::search_help,
+        commands::help::get_method_documentation,
+        commands::help::list_tutorials,
+        commands::help::get_tutorial,
+        commands::help::get_offline_status,
+        commands::help::get_quick_start_guide,
+        commands::help::get_sample_datasets,
+    ])
+    .on_window_event(handle_window_event)
+    .run(tauri::generate_context!())
+    .map_err(|e| anyhow::anyhow!("Failed to run application: {}", e))?;
+    }
     
     Ok(())
 }
@@ -215,8 +365,12 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: SystemTrayEvent) {
     match event {
         SystemTrayEvent::LeftClick { .. } => {
             if let Some(window) = app.get_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
+                if let Err(e) = window.show() {
+                    error!("Failed to show window: {}", e);
+                }
+                if let Err(e) = window.set_focus() {
+                    error!("Failed to focus window: {}", e);
+                }
             }
         }
         SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
@@ -226,9 +380,15 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: SystemTrayEvent) {
             }
             "show" => {
                 if let Some(window) = app.get_window("main") {
-                    let _ = window.show();
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
+                    if let Err(e) = window.show() {
+                        error!("Failed to show window: {}", e);
+                    }
+                    if let Err(e) = window.unminimize() {
+                        error!("Failed to unminimize window: {}", e);
+                    }
+                    if let Err(e) = window.set_focus() {
+                        error!("Failed to focus window: {}", e);
+                    }
                 }
             }
             "quick_import" => {
@@ -284,22 +444,10 @@ fn setup_main_window(app: &tauri::App) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn register_global_shortcuts(app: &tauri::App) -> anyhow::Result<()> {
-    let mut shortcut_manager = app.global_shortcut_manager();
-    
-    // Register productivity shortcuts
-    shortcut_manager
-        .register("CmdOrCtrl+Shift+I", move || {
-            info!("Global shortcut: Quick Import triggered");
-        })
-        .map_err(|e| anyhow::anyhow!("Failed to register shortcut: {}", e))?;
-    
-    shortcut_manager
-        .register("CmdOrCtrl+Shift+R", move || {
-            info!("Global shortcut: Run Imputation triggered");
-        })
-        .map_err(|e| anyhow::anyhow!("Failed to register shortcut: {}", e))?;
-    
+fn register_global_shortcuts(_app: &tauri::App) -> anyhow::Result<()> {
+    // Global shortcuts removed for security reasons
+    // All shortcuts should be handled through the frontend
+    info!("Global shortcuts disabled for security");
     Ok(())
 }
 
@@ -364,7 +512,9 @@ fn handle_window_event(event: GlobalWindowEvent) {
             #[cfg(not(target_os = "macos"))]
             {
                 api.prevent_close();
-                event.window().hide().unwrap();
+                if let Err(e) = event.window().hide() {
+                    error!("Failed to hide window: {}", e);
+                }
             }
         }
         WindowEvent::Resized(size) => {

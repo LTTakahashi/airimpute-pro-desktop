@@ -1,17 +1,13 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import { 
   FileText, 
   BookOpen, 
   Calculator,
   FileOutput,
-  Settings,
   HelpCircle,
   Plus,
   FolderOpen,
   Clock,
-  CheckCircle,
-  AlertCircle,
   Layout
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
@@ -21,13 +17,15 @@ import { Badge } from '@/components/ui/Badge';
 import { Alert } from '@/components/ui/Alert';
 import { Progress } from '@/components/ui/Progress';
 import { ScientificCard } from '@/components/layout/ScientificCard';
+import type {
+  Report,
+  Citation
+} from '@/components/academic';
 import { 
   ReportBuilder, 
   CitationGenerator, 
   LaTeXEquationEditor,
-  MethodDocumentationViewer,
-  Report,
-  Citation
+  MethodDocumentationViewer
 } from '@/components/academic';
 import { cn } from '@/utils/cn';
 
@@ -41,7 +39,6 @@ interface RecentReport {
 }
 
 export default function Publication() {
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'reports' | 'citations' | 'equations' | 'methods'>('reports');
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -93,7 +90,7 @@ export default function Publication() {
     // Show success message
   };
 
-  const handleExportReport = async (report: Report, format: 'pdf' | 'latex' | 'word') => {
+  const handleExportReport = async (_report: Report, format: 'pdf' | 'latex' | 'word') => {
     // TODO: Implement actual export functionality
     console.log('Exporting report as:', format);
   };

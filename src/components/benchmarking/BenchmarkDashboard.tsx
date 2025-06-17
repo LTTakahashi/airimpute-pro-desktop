@@ -17,18 +17,15 @@ import {
   SelectValue 
 } from '../ui/Select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/Tabs';
-import { Alert, AlertDescription } from '../ui/Alert';
 import { Badge } from '../ui/Badge';
 import { 
   BarChart, 
-  LineChart, 
   ScatterChart,
   RadarChart,
   HeatmapChart,
   BoxPlotChart
 } from './BenchmarkCharts';
 import { StatisticalTestResults } from './StatisticalTestResults';
-import { BenchmarkRunner } from './BenchmarkRunner';
 import { MetricSelector } from './MetricSelector';
 import { DatasetManager } from './DatasetManager';
 import { MethodComparison } from './MethodComparison';
@@ -36,20 +33,13 @@ import { ReproducibilityReport } from './ReproducibilityReport';
 import { ExportPanel } from './ExportPanel';
 import { 
   Play, 
-  Download, 
   RefreshCw, 
-  Settings, 
-  FileText,
   Cpu,
   Zap,
   Database,
-  GitBranch,
-  Award,
-  TrendingUp,
-  AlertTriangle,
-  CheckCircle
+  Award
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoke } from '@tauri-apps/api/tauri';
 
@@ -139,7 +129,7 @@ export const BenchmarkDashboard: React.FC = () => {
       
       return result;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['benchmark-results'] });
       setRunningBenchmark(false);
       setBenchmarkProgress(100);

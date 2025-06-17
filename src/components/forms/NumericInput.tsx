@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { NumericInputProps } from '@/types/components/forms';
+import type { NumericInputProps } from '@/types/components/forms';
 import { validateScientificConstraint, parseScientificNotation } from '@/lib/validation/scientific';
 import { announce, KEYS } from '@/lib/accessibility';
 import { cn } from '@/utils/cn';

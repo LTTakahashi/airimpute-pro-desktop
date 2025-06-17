@@ -2,7 +2,7 @@ use std::path::Path;
 use anyhow::{Result, Context};
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions, Transaction, Sqlite};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde_json::Value as JsonValue;
 use sha2::{Sha256, Digest};
 use std::sync::Arc;
@@ -177,8 +177,8 @@ impl Database {
         .bind(&file_hash)
         .bind(quality_metrics)
         .bind(uncertainty_metrics)
-        .bind(result.validation_results.as_ref().map(|v| serde_json::to_value(v).ok()).flatten())
-        .bind(result.method_outputs.as_ref().map(|v| serde_json::to_value(v).ok()).flatten())
+        .bind(result.validation_results.as_ref().and_then(|v| serde_json::to_value(v).ok()))
+        .bind(result.method_outputs.as_ref().and_then(|v| serde_json::to_value(v).ok()))
         .fetch_one(&self.pool)
         .await?;
         

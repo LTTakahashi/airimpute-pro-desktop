@@ -1,12 +1,12 @@
 // Local file manager with integrity checking and versioning
 use std::path::{Path, PathBuf};
 use std::fs::{self, File};
-use std::io::{Read, Write, BufReader, BufWriter};
+use std::io::{Read, BufReader};
 use serde::{Serialize, Deserialize};
 use sha2::{Sha256, Digest};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-use anyhow::{Result, Context};
+use anyhow::Result;
 use zip::write::FileOptions;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,7 +24,7 @@ pub struct ManagedFile {
     pub versions: Vec<FileVersion>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum FileType {
     Dataset,
     ImputationResult,
@@ -34,7 +34,7 @@ pub enum FileType {
     Export,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FileMetadata {
     pub rows: Option<usize>,
     pub columns: Option<usize>,
@@ -140,7 +140,7 @@ impl LocalFileManager {
             stored_name,
             file_type,
             size_bytes: file_meta.len(),
-            hash: file_hash,
+            hash: file_hash.clone(),
             created_at: Utc::now(),
             last_accessed: Utc::now(),
             access_count: 0,

@@ -7,7 +7,7 @@
 import React, { useMemo, useCallback, useState } from 'react';
 import Plot from 'react-plotly.js';
 import type { Data, Layout, Config } from 'plotly.js';
-import { TimeSeriesChartProps, TimeSeriesDataPoint } from '@/types/components/visualization';
+import type { TimeSeriesChartProps, TimeSeriesDataPoint } from '@/types/components/visualization';
 import { getScientificAriaProps, announce } from '@/lib/accessibility';
 import { cn } from '@/utils/cn';
 import { useStore } from '@/store';
@@ -25,7 +25,6 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
   showLegend = true,
   legendPosition = 'top',
   colorScheme = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'],
-  highlightMissing = true,
   onPointClick,
   onRangeSelect,
   width = 800,
@@ -164,7 +163,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({
     };
     
     // Add range selector for expert mode
-    if (uiMode === 'expert') {
+    if (uiMode === 'expert' && baseLayout.xaxis) {
       baseLayout.xaxis.rangeselector = {
         buttons: [
           { count: 1, label: '1d', step: 'day', stepmode: 'backward' },

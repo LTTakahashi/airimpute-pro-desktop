@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
-use anyhow::{Result, Context};
+use anyhow::Result;
 use tracing::{info, error};
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -62,6 +62,11 @@ pub struct MethodComparisonResult {
 }
 
 /// Run imputation on a dataset
+/// 
+/// Complexity Analysis:
+/// - Time: O(method_specific) - Depends on chosen imputation method
+/// - Space: O(n * m) for storing original and imputed data
+/// - Async overhead: O(1) for task spawning
 #[command]
 pub async fn run_imputation(
     window: Window,
@@ -196,7 +201,7 @@ async fn execute_imputation(
     // Progress callback
     let progress_callback = {
         let window = window.clone();
-        let job_id = job_id.clone();
+        let job_id = job_id;
         move |progress: f64, message: &str| {
             window.emit("imputation-progress", serde_json::json!({
                 "job_id": job_id.to_string(),
@@ -206,9 +211,14 @@ async fn execute_imputation(
         }
     };
     
-    // Execute imputation
-    match state.python_runtime.bridge.run_imputation(request) {
-        Ok(result) => {
+    // Execute imputation in a blocking-safe thread
+    let state_clone = state.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        state_clone.python_runtime.bridge.run_imputation(request)
+    }).await;
+    
+    match result {
+        Ok(Ok(result)) => {
             // Update job with results
             if let Some(job_arc) = state.imputation_jobs.get(&job_id) {
                 let mut job = job_arc.lock().await;
@@ -245,7 +255,7 @@ async fn execute_imputation(
                 "execution_time_ms": result.execution_stats.total_time_ms,
             })).ok();
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             error!("Imputation failed: {}", e);
             
             // Update job with error
@@ -262,10 +272,32 @@ async fn execute_imputation(
                 "error": e.to_string(),
             })).ok();
         }
+        Err(join_err) => {
+            error!("Imputation task panicked: {}", join_err);
+            
+            // Update job with error
+            if let Some(job_arc) = state.imputation_jobs.get(&job_id) {
+                let mut job = job_arc.lock().await;
+                job.status = JobStatus::Failed("Internal error: task panicked".to_string());
+                job.completed_at = Some(Utc::now());
+                job.error = Some(format!("Task panic: {}", join_err));
+            }
+            
+            // Emit error
+            window.emit("imputation-failed", serde_json::json!({
+                "job_id": job_id.to_string(),
+                "error": "Internal error: task panicked",
+            })).ok();
+        }
     }
 }
 
 /// Run batch imputation with multiple methods
+/// 
+/// Complexity Analysis:
+/// - Time: O(k * method_complexity) where k = number of methods
+/// - Space: O(k * n * m) for storing results from k methods
+/// - Constraint: k ≤ MAX_BATCH_METHODS (10) to prevent resource exhaustion
 #[command]
 pub async fn run_batch_imputation(
     window: Window,
@@ -273,6 +305,15 @@ pub async fn run_batch_imputation(
     dataset_id: String,
     methods: Vec<String>,
 ) -> Result<Vec<ImputationJobResponse>, String> {
+    const MAX_BATCH_METHODS: usize = 10;
+    
+    if methods.len() > MAX_BATCH_METHODS {
+        return Err(format!(
+            "Too many methods in batch request. Maximum is {}.",
+            MAX_BATCH_METHODS
+        ));
+    }
+    
     info!("Starting batch imputation for {} methods", methods.len());
     
     let mut responses = Vec::new();
@@ -296,6 +337,10 @@ pub async fn run_batch_imputation(
 }
 
 /// Get available imputation methods
+/// 
+/// Complexity Analysis:
+/// - Time: O(1) - Returns a static list of methods
+/// - Space: O(k) where k is the number of methods (constant)
 #[command]
 pub async fn get_available_methods() -> Result<Vec<MethodInfo>, String> {
     Ok(vec![
@@ -304,7 +349,7 @@ pub async fn get_available_methods() -> Result<Vec<MethodInfo>, String> {
             name: "Robust Adaptive Hybrid (RAH)".to_string(),
             description: "Our flagship method that adaptively combines multiple imputation strategies based on local data characteristics. Achieves 42.1% improvement over traditional methods.".to_string(),
             category: "Hybrid".to_string(),
-            complexity: "Advanced".to_string(),
+            complexity: "Advanced | Time: O(n_missing * k * n log n) | Space: O(n * m)".to_string(),
             suitable_for: vec!["All patterns".to_string(), "Complex missing data".to_string()],
             parameters: serde_json::json!({
                 "spatial_weight": { "type": "number", "default": 0.5, "min": 0, "max": 1 },
@@ -318,7 +363,7 @@ pub async fn get_available_methods() -> Result<Vec<MethodInfo>, String> {
             name: "Spline Interpolation".to_string(),
             description: "Smooth interpolation using cubic splines. Best for continuous data with smooth temporal patterns.".to_string(),
             category: "Interpolation".to_string(),
-            complexity: "Simple".to_string(),
+            complexity: "Simple | Time: O(n + n_missing * log n_valid) | Space: O(n)".to_string(),
             suitable_for: vec!["Short gaps".to_string(), "Smooth patterns".to_string()],
             parameters: serde_json::json!({
                 "order": { "type": "integer", "default": 3, "min": 1, "max": 5 },
@@ -331,7 +376,7 @@ pub async fn get_available_methods() -> Result<Vec<MethodInfo>, String> {
             name: "Spatial Kriging".to_string(),
             description: "Geostatistical interpolation that uses spatial correlation. Excellent for geographic data with spatial dependencies.".to_string(),
             category: "Spatial".to_string(),
-            complexity: "Advanced".to_string(),
+            complexity: "Advanced | Time: O(N³) fit, O(M * N²) predict | Space: O(N²)".to_string(),
             suitable_for: vec!["Spatial data".to_string(), "Geographic patterns".to_string()],
             parameters: serde_json::json!({
                 "variogram_model": { "type": "string", "default": "spherical", "options": ["linear", "power", "gaussian", "spherical", "exponential"] },
@@ -344,7 +389,7 @@ pub async fn get_available_methods() -> Result<Vec<MethodInfo>, String> {
             name: "Seasonal Decomposition".to_string(),
             description: "Decomposes time series into trend, seasonal, and residual components. Ideal for data with strong seasonal patterns.".to_string(),
             category: "Time Series".to_string(),
-            complexity: "Moderate".to_string(),
+            complexity: "Moderate | Time: O(n * period) | Space: O(n)".to_string(),
             suitable_for: vec!["Seasonal data".to_string(), "Periodic patterns".to_string()],
             parameters: serde_json::json!({
                 "period": { "type": "integer", "default": 24, "min": 2 },
@@ -357,7 +402,7 @@ pub async fn get_available_methods() -> Result<Vec<MethodInfo>, String> {
             name: "Matrix Factorization".to_string(),
             description: "Low-rank matrix factorization for multivariate imputation. Captures complex relationships between variables.".to_string(),
             category: "Machine Learning".to_string(),
-            complexity: "Advanced".to_string(),
+            complexity: "Advanced | Time: O(I * n * m²) | Space: O(n * m)".to_string(),
             suitable_for: vec!["Multivariate data".to_string(), "Complex correlations".to_string()],
             parameters: serde_json::json!({
                 "n_factors": { "type": "integer", "default": 10, "min": 1, "max": 50 },
@@ -370,7 +415,7 @@ pub async fn get_available_methods() -> Result<Vec<MethodInfo>, String> {
             name: "Deep Learning Imputation".to_string(),
             description: "Neural network-based imputation using attention mechanisms. State-of-the-art for complex patterns.".to_string(),
             category: "Deep Learning".to_string(),
-            complexity: "Expert".to_string(),
+            complexity: "Expert | Time: O(epochs * n/B * L * T² * d) | Space: O(B * T² * H)".to_string(),
             suitable_for: vec!["Complex patterns".to_string(), "Large datasets".to_string()],
             parameters: serde_json::json!({
                 "architecture": { "type": "string", "default": "transformer", "options": ["lstm", "gru", "transformer"] },
@@ -453,6 +498,11 @@ pub async fn validate_imputation_results(
 }
 
 /// Compare multiple imputation methods
+/// 
+/// Complexity Analysis:
+/// - Time: O(k * (method_complexity + metric_computation))
+/// - Space: O(k * n * m) for storing intermediate results
+/// - Sorting: O(k * log k) for ranking methods by score
 #[command]
 pub async fn compare_methods(
     window: Window,
@@ -521,9 +571,9 @@ pub async fn compare_methods(
     Ok(results)
 }
 
-/// Get documentation for a specific method
+/// Get documentation for a specific imputation method
 #[command]
-pub async fn get_method_documentation(method: String) -> Result<serde_json::Value, String> {
+pub async fn get_imputation_method_documentation(method: String) -> Result<serde_json::Value, String> {
     let docs = match method.as_str() {
         "rah" => serde_json::json!({
             "method": "Robust Adaptive Hybrid (RAH)",
@@ -561,22 +611,30 @@ fn parse_imputation_method(
     method: &str,
     parameters: &serde_json::Value,
 ) -> Result<ImputationMethod> {
+    // Helper functions to safely get values or use defaults
+    let get_f64 = |key: &str, default: f64| -> f64 {
+        parameters.get(key).and_then(|v| v.as_f64()).unwrap_or(default)
+    };
+    let get_u64 = |key: &str, default: u64| -> u64 {
+        parameters.get(key).and_then(|v| v.as_u64()).unwrap_or(default)
+    };
+    let get_str = |key: &str, default: &str| -> String {
+        parameters.get(key).and_then(|v| v.as_str()).unwrap_or(default).to_string()
+    };
+
     match method {
         "rah" => Ok(ImputationMethod::RAH {
-            spatial_weight: parameters["spatial_weight"].as_f64().unwrap_or(0.5),
-            temporal_weight: parameters["temporal_weight"].as_f64().unwrap_or(0.5),
-            adaptive_threshold: parameters["adaptive_threshold"].as_f64().unwrap_or(0.1),
+            spatial_weight: get_f64("spatial_weight", 0.5),
+            temporal_weight: get_f64("temporal_weight", 0.5),
+            adaptive_threshold: get_f64("adaptive_threshold", 0.1),
         }),
         "spline" => Ok(ImputationMethod::SplineInterpolation {
-            order: parameters["order"].as_u64().unwrap_or(3) as usize,
-            smoothing: parameters["smoothing"].as_f64().unwrap_or(0.0),
+            order: get_u64("order", 3) as usize,
+            smoothing: get_f64("smoothing", 0.0),
         }),
         "kriging" => Ok(ImputationMethod::SpatialKriging {
-            variogram_model: parameters["variogram_model"]
-                .as_str()
-                .unwrap_or("spherical")
-                .to_string(),
-            n_neighbors: parameters["n_neighbors"].as_u64().unwrap_or(10) as usize,
+            variogram_model: get_str("variogram_model", "spherical"),
+            n_neighbors: get_u64("n_neighbors", 10) as usize,
         }),
         _ => Err(anyhow::anyhow!("Unknown method: {}", method)),
     }

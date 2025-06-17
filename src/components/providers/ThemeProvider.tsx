@@ -5,7 +5,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { ScientificTheme } from '@/types/components';
+import type { ScientificTheme } from '@/types/components';
 import { LIGHT_THEME, DARK_THEME, HIGH_CONTRAST_THEME } from '@/lib/constants/themes';
 import { prefersColorScheme, prefersHighContrast } from '@/lib/accessibility';
 

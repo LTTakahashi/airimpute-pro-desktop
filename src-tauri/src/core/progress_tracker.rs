@@ -1,7 +1,7 @@
 // Realistic progress tracking system that actually works
 
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use serde::{Serialize, Deserialize};
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -267,7 +267,9 @@ impl ProgressManager {
     
     /// Get next progress update (for UI)
     pub async fn next_update(&self) -> Option<ProgressUpdate> {
-        self.receiver.lock().unwrap().recv().await
+        // Use try_recv to avoid holding the lock across await
+        let mut receiver = self.receiver.lock().unwrap();
+        receiver.try_recv().ok()
     }
     
     /// Cancel an operation by ID

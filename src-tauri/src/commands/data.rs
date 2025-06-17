@@ -7,13 +7,13 @@ use chrono::{DateTime, Utc};
 use anyhow::{Result, Context};
 use tracing::{info, warn, error};
 use serde_json::json;
-use ndarray::{Array2, Array1, Axis};
+use ndarray::{Array2, Axis};
 use std::collections::HashMap;
 
 use crate::state::AppState;
 use crate::core::data::{Dataset, DataValidation, DataStatistics};
-use crate::utils::fs::sanitize_path;
-use crate::error::Result as AppResult;
+use crate::utils::fs::{get_file_size, sanitize_path};
+use crate::security::validate_read_path;
 
 /// Response structure for dataset operations
 #[derive(Debug, Clone, Serialize)]
@@ -69,9 +69,9 @@ pub async fn load_dataset(
 ) -> Result<DatasetResponse, String> {
     info!("Loading dataset from: {}", path);
     
-    // Validate and sanitize path
-    let sanitized_path = sanitize_path(&path)
-        .map_err(|e| format!("Invalid path: {}", e))?;
+    // Validate and sanitize path using security module
+    let sanitized_path = validate_read_path(&path)
+        .map_err(|e| format!("Security validation failed: {}", e))?;
     
     // Check file exists and is readable
     if !sanitized_path.exists() {
@@ -80,6 +80,18 @@ pub async fn load_dataset(
     
     if !sanitized_path.is_file() {
         return Err(format!("Path is not a file: {}", path));
+    }
+    
+    // Check file size using utility function
+    let file_size_mb = get_file_size(&sanitized_path)
+        .map_err(|e| format!("Failed to get file size: {}", e))?
+        / (1024 * 1024);
+    
+    if file_size_mb > 500 {
+        warn!("Large file detected: {} MB", file_size_mb);
+        window.emit("import-warning", json!({
+            "message": format!("Large file: {} MB. Processing may take time.", file_size_mb)
+        })).ok();
     }
     
     // Emit progress event
@@ -816,7 +828,7 @@ async fn load_hdf5(path: &PathBuf, options: &ImportOptions) -> Result<Dataset> {
 // Temporarily disabled due to chrono version conflict with arrow/parquet crates
 #[allow(dead_code)]
 async fn load_parquet(path: &PathBuf, options: &ImportOptions) -> Result<Dataset> {
-    return Err(anyhow::anyhow!("Parquet support is temporarily disabled due to dependency conflicts"));
+    Err(anyhow::anyhow!("Parquet support is temporarily disabled due to dependency conflicts"))
     /*
     use parquet::file::reader::{FileReader, SerializedFileReader};
     use parquet::record::{Row, Field};
@@ -1306,7 +1318,7 @@ pub async fn save_csv(dataset: &Dataset, path: &PathBuf) -> Result<()> {
 }
 
 pub async fn save_excel(dataset: &Dataset, path: &PathBuf) -> Result<()> {
-    use xlsxwriter::{Workbook, Format};
+    use xlsxwriter::Workbook;
     use xlsxwriter::prelude::{FormatColor, FormatBorder};
     use tracing::debug;
     
@@ -1322,20 +1334,24 @@ pub async fn save_excel(dataset: &Dataset, path: &PathBuf) -> Result<()> {
         .context("Failed to add worksheet")?;
     
     // Create formats
-    let header_format = workbook.add_format()
+    let mut header_format = workbook.add_format();
+    header_format
         .set_bold()
         .set_bg_color(FormatColor::Custom(0xE0E0E0))
         .set_border(FormatBorder::Thin);
     
-    let date_format = workbook.add_format()
+    let mut date_format = workbook.add_format();
+    date_format
         .set_num_format("yyyy-mm-dd hh:mm:ss")
         .set_border(FormatBorder::Thin);
     
-    let number_format = workbook.add_format()
+    let mut number_format = workbook.add_format();
+    number_format
         .set_num_format("0.00000")
         .set_border(FormatBorder::Thin);
     
-    let na_format = workbook.add_format()
+    let mut na_format = workbook.add_format();
+    na_format
         .set_font_color(FormatColor::Red)
         .set_italic()
         .set_border(FormatBorder::Thin);
@@ -1871,7 +1887,7 @@ async fn save_hdf5(dataset: &Dataset, path: &PathBuf) -> Result<()> {
 // Temporarily disabled due to chrono version conflict with arrow/parquet crates
 #[allow(dead_code)]
 async fn save_parquet(dataset: &Dataset, path: &PathBuf) -> Result<()> {
-    return Err(anyhow::anyhow!("Parquet support is temporarily disabled due to dependency conflicts"));
+    Err(anyhow::anyhow!("Parquet support is temporarily disabled due to dependency conflicts"))
     /*
     use parquet::{
         file::{
@@ -2117,7 +2133,7 @@ pub async fn save_json(dataset: &Dataset, path: &PathBuf) -> Result<()> {
         // Write timestamps
         writeln!(&mut writer, "  \"timestamps\": [")?;
         for (idx, timestamp) in dataset.index.iter().enumerate() {
-            write!(&mut writer, "    \"{}\"{}\n", 
+            writeln!(&mut writer, "    \"{}\"{}", 
                 timestamp.to_rfc3339(),
                 if idx < dataset.index.len() - 1 { "," } else { "" }
             )?;

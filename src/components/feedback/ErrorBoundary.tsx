@@ -4,9 +4,10 @@
  * WCAG 2.1 Level AA compliant
  */
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { ErrorBoundaryProps } from '@/types/components/feedback';
-import { ScientificError } from '@/types/components';
+import type { ErrorInfo } from 'react';
+import { Component } from 'react';
+import type { ErrorBoundaryProps } from '@/types/components/feedback';
+import type { ScientificError } from '@/types/components';
 import { AlertTriangle, RefreshCw, ChevronDown, ChevronUp, FileText, Copy } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { announce } from '@/lib/accessibility';

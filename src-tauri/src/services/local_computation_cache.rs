@@ -335,7 +335,7 @@ pub fn hash_data(data: &[Vec<f64>]) -> String {
     let mut hasher = Sha256::new();
     for row in data {
         for &value in row {
-            hasher.update(&value.to_le_bytes());
+            hasher.update(value.to_le_bytes());
         }
     }
     format!("{:x}", hasher.finalize())

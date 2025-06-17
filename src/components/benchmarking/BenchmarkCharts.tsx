@@ -18,12 +18,9 @@ import {
   Legend,
   ResponsiveContainer,
   Cell,
-  ReferenceLine,
-  Area,
   ComposedChart,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
-import { cn } from '@/utils/cn';
 
 interface ChartProps {
   data: any;
@@ -60,7 +57,7 @@ export const BarChart: React.FC<BarChartProps> = ({
         <ResponsiveContainer width="100%" height={height}>
           <RechartsBarChart data={data.labels.map((label: string, idx: number) => ({
             name: label,
-            ...data.datasets.reduce((acc: any, dataset: any, dsIdx: number) => ({
+            ...data.datasets.reduce((acc: any, dataset: any) => ({
               ...acc,
               [dataset.label]: dataset.data[idx]
             }), {})
@@ -429,7 +426,7 @@ export const BoxPlotChart: React.FC<BoxPlotChartProps> = ({
             <YAxis label={{ value: yAxisLabel, angle: -90, position: 'insideLeft' }} />
             <Tooltip />
             <Bar dataKey="values" fill="none">
-              {boxPlotData.map((entry, index) => (
+              {boxPlotData.map((entry: any, index: number) => (
                 <Cell key={`cell-${index}`}>
                   <g>
                     {/* Box */}

@@ -4,20 +4,22 @@ use tauri::State;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use anyhow::{Result, Context};
-use tracing::{info, warn, error};
+use tracing::info;
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::io::Write;
-use chrono::{DateTime, Utc, Datelike};
+use chrono::{Utc, Datelike};
 
 use crate::state::AppState;
-use crate::commands::data::{save_csv, save_excel, save_json, DataFormat};
+use crate::commands::data::{save_csv, save_excel};
 use crate::core::imputation::JobStatus;
 #[cfg(feature = "netcdf-support")]
 use crate::commands::data::save_netcdf;
 #[cfg(feature = "hdf5-support")]
 use crate::commands::data::save_hdf5;
 use crate::core::data::Dataset;
+use crate::security::validate_write_path;
+use crate::security::escape_latex as security_escape_latex;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExportOptions {
@@ -62,14 +64,9 @@ pub async fn export_to_csv(
         .ok_or_else(|| "Dataset not found".to_string())?;
     let dataset = dataset_ref.value();
     
-    // Create path
-    let export_path = PathBuf::from(&path);
-    
-    // Ensure directory exists
-    if let Some(parent) = export_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create export directory: {}", e))?;
-    }
+    // Validate and sanitize export path using security module
+    let export_path = validate_write_path(&path)
+        .map_err(|e| format!("Security validation failed: {}", e))?;
     
     // Emit progress
     window.emit("export-progress", serde_json::json!({
@@ -139,7 +136,7 @@ async fn export_csv_with_options(
     window: &Window,
 ) -> Result<()> {
     use csv::WriterBuilder;
-    use encoding_rs::WINDOWS_1252;
+    
     
     info!("Exporting CSV with custom options");
     
@@ -223,14 +220,9 @@ pub async fn export_to_excel(
         .ok_or_else(|| "Dataset not found".to_string())?;
     let dataset = dataset_ref.value();
     
-    // Create path
-    let export_path = PathBuf::from(&path);
-    
-    // Ensure directory exists
-    if let Some(parent) = export_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create export directory: {}", e))?;
-    }
+    // Validate and sanitize export path using security module
+    let export_path = validate_write_path(&path)
+        .map_err(|e| format!("Security validation failed: {}", e))?;
     
     // Emit progress
     window.emit("export-progress", serde_json::json!({
@@ -287,14 +279,9 @@ pub async fn export_to_netcdf(
         .ok_or_else(|| "Dataset not found".to_string())?;
     let dataset = dataset_ref.value();
     
-    // Create path
-    let export_path = PathBuf::from(&path);
-    
-    // Ensure directory exists
-    if let Some(parent) = export_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create export directory: {}", e))?;
-    }
+    // Validate and sanitize export path using security module
+    let export_path = validate_write_path(&path)
+        .map_err(|e| format!("Security validation failed: {}", e))?;
     
     // Emit progress
     window.emit("export-progress", serde_json::json!({
@@ -369,14 +356,9 @@ pub async fn export_to_hdf5(
         .ok_or_else(|| "Dataset not found".to_string())?;
     let dataset = dataset_ref.value();
     
-    // Create path
-    let export_path = PathBuf::from(&path);
-    
-    // Ensure directory exists
-    if let Some(parent) = export_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create export directory: {}", e))?;
-    }
+    // Validate and sanitize export path using security module
+    let export_path = validate_write_path(&path)
+        .map_err(|e| format!("Security validation failed: {}", e))?;
     
     // Emit progress
     window.emit("export-progress", serde_json::json!({
@@ -503,7 +485,7 @@ pub async fn generate_latex_report(
             if let Some(var_metrics_obj) = var_metrics.as_object() {
                 variable_metrics.push(format!(
                     "{} & {:.4} & {:.4} & {:.4} & {:.4} \\\\",
-                    escape_latex(var),
+                    security_escape_latex(var),
                     var_metrics_obj.get("rmse").and_then(|v| v.as_f64()).unwrap_or(0.0),
                     var_metrics_obj.get("mae").and_then(|v| v.as_f64()).unwrap_or(0.0),
                     var_metrics_obj.get("r2").and_then(|v| v.as_f64()).unwrap_or(0.0),
@@ -515,10 +497,10 @@ pub async fn generate_latex_report(
     
     // Fill template
     let report = latex_template
-        .replace("{TITLE}", &escape_latex(&format!("Imputation Analysis Report: {}", dataset.name)))
+        .replace("{TITLE}", &security_escape_latex(&format!("Imputation Analysis Report: {}", dataset.name)))
         .replace("{DATE}", &Utc::now().format("%B %d, %Y").to_string())
-        .replace("{DATASET_NAME}", &escape_latex(&dataset.name))
-        .replace("{METHOD}", &escape_latex(method))
+        .replace("{DATASET_NAME}", &security_escape_latex(&dataset.name))
+        .replace("{METHOD}", &security_escape_latex(method))
         .replace("{TOTAL_ROWS}", &dataset.rows().to_string())
         .replace("{TOTAL_COLUMNS}", &dataset.columns().to_string())
         .replace("{MISSING_VALUES}", &total_missing.to_string())
@@ -704,24 +686,13 @@ Execution Time: {EXECUTION_TIME} seconds
 \end{document}
 "#;
 
-fn escape_latex(text: &str) -> String {
-    text.replace("&", "\\&")
-        .replace("%", "\\%")
-        .replace("$", "\\$")
-        .replace("#", "\\#")
-        .replace("_", "\\_")
-        .replace("{", "\\{")
-        .replace("}", "\\}")
-        .replace("~", "\\textasciitilde{}")
-        .replace("^", "\\textasciicircum{}")
-}
 
 fn format_parameters(params: &serde_json::Value) -> String {
     if let Some(obj) = params.as_object() {
         let items: Vec<String> = obj.iter()
             .map(|(k, v)| format!("\\item {}: {}", 
-                escape_latex(k), 
-                escape_latex(&v.to_string())))
+                security_escape_latex(k), 
+                security_escape_latex(&v.to_string())))
             .collect();
         
         format!("\\begin{{itemize}}\n{}\n\\end{{itemize}}", items.join("\n"))

@@ -6,7 +6,8 @@ import { ScientificCard } from '@/components/layout/ScientificCard';
 import { NumericInput } from '@/components/forms/NumericInput';
 import { Alert } from '@/components/ui/Alert';
 import { invoke } from '@tauri-apps/api/tauri';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import type { UnlistenFn } from '@tauri-apps/api/event';
+import { listen } from '@tauri-apps/api/event';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '@/store';
 
@@ -83,7 +84,7 @@ const ImputationV2: React.FC = () => {
       return () => {}; // Return empty cleanup function
     }
 
-    let unlisteners: UnlistenFn[] = [];
+    const unlisteners: UnlistenFn[] = [];
 
     const setupListeners = async () => {
       // Progress updates
@@ -97,7 +98,7 @@ const ImputationV2: React.FC = () => {
       }));
 
       // Job completed
-      unlisteners.push(await listen<{ job_id: string; metadata: any }>('imputation:completed', (event) => {
+      unlisteners.push(await listen<{ job_id: string; metadata: any }>('imputation:completed', () => {
         setCurrentJob(prev => prev ? { ...prev, status: 'completed', progress: 100 } : null);
         setProgress(null);
         // Navigate to results
@@ -105,7 +106,7 @@ const ImputationV2: React.FC = () => {
       }));
 
       // Job failed
-      unlisteners.push(await listen<{ job_id: string; error: string }>('imputation:failed', (event) => {
+      unlisteners.push(await listen<{ job_id: string; error: string }>('imputation:failed', () => {
         setCurrentJob(prev => prev ? { ...prev, status: 'failed' } : null);
         setProgress(null);
       }));
@@ -562,7 +563,7 @@ const ImputationV2: React.FC = () => {
                 ) : (
                   <Button
                     onClick={handleRunImputation}
-                    disabled={!selectedMethod || loading || (validation && !validation.is_valid)}
+                    disabled={!selectedMethod || loading || (validation !== null && !validation.is_valid)}
                   >
                     <Play className="w-4 h-4 mr-2" />
                     Run Imputation

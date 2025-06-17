@@ -1,7 +1,6 @@
 // Practical data validation system
 
-use crate::core::data::{Dataset, Variable, MeasurementType};
-use ndarray::{Array2, ArrayView1};
+use crate::core::data::Dataset;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use chrono::{DateTime, Utc, Duration};
@@ -584,7 +583,7 @@ mod tests {
         
         // Column B has 1 missing value
         assert_eq!(result.summary.missing_values.get("B"), Some(&1));
-        assert!(result.summary.missing_percentage.get("B").unwrap() > 0.0);
+        assert!(result.summary.missing_percentage.get("B").unwrap() > &0.0);
     }
     
     #[test]

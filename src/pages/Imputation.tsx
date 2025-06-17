@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Settings, Info, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { Progress } from '@/components/ui/Progress';
 import { ScientificCard } from '@/components/layout/ScientificCard';
 import { NumericInput } from '@/components/forms/NumericInput';
@@ -105,7 +104,7 @@ const Imputation: React.FC = () => {
     setProgress(null);
 
     try {
-      const result = await invoke('run_imputation', {
+      await invoke('run_imputation', {
         datasetId: currentDataset.id,
         method: selectedMethod,
         parameters

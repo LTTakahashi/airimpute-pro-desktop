@@ -1,8 +1,7 @@
 use tauri::command;
 use std::sync::Arc;
 use tauri::State;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use serde::Serialize;
 use tracing::info;
 
 use crate::state::AppState;
@@ -244,7 +243,7 @@ pub async fn archive_project(
     
     // Collect datasets first to avoid holding locks across await points
     let datasets_to_export: Vec<_> = state.datasets.iter()
-        .map(|entry| (entry.key().clone(), entry.value().clone()))
+        .map(|entry| (*entry.key(), entry.value().clone()))
         .collect();
     
     // Export all associated datasets
@@ -283,7 +282,7 @@ pub async fn archive_project(
     
     // Collect job IDs first
     let job_ids: Vec<_> = state.imputation_jobs.iter()
-        .map(|entry| entry.key().clone())
+        .map(|entry| *entry.key())
         .collect();
     
     for job_id in job_ids {

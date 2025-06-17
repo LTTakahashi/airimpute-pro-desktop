@@ -1,5 +1,5 @@
 // Local performance profiler - no external dependencies
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::collections::HashMap;
 use std::sync::Arc;
 use parking_lot::RwLock;
@@ -327,6 +327,7 @@ macro_rules! profile {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+    use std::time::Duration;
     
     #[test]
     fn test_profiler() {

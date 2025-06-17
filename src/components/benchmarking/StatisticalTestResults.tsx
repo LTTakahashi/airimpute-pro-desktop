@@ -241,7 +241,7 @@ export const StatisticalTestResults: React.FC<StatisticalTestResultsProps> = ({
         <CardHeader>
           <CardTitle>Effect Sizes</CardTitle>
           <CardDescription>
-            Cohen's d for pairwise method comparisons
+            Cohen&apos;s d for pairwise method comparisons
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -384,7 +384,7 @@ function calculateEffectSizes(methodResults: Record<string, number[]>): any[] {
 function performNormalityTests(methodResults: Record<string, number[]>): Record<string, any> {
   const tests: Record<string, any> = {};
   
-  Object.entries(methodResults).forEach(([method, values]) => {
+  Object.entries(methodResults).forEach(([method]) => {
     // Mock Shapiro-Wilk test
     const statistic = 0.9 + Math.random() * 0.1;
     const pValue = Math.random();

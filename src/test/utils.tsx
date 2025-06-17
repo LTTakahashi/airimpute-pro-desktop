@@ -1,5 +1,7 @@
-import React, { ReactElement } from 'react';
-import { render, RenderOptions, RenderResult, screen } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import React from 'react';
+import type { RenderOptions, RenderResult } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
@@ -216,7 +218,6 @@ export const createSnapshotTest = (
 
 // Event testing utilities
 export const fireClickEvent = (element: HTMLElement) => {
-  const { fireEvent } = require('@testing-library/react');
   fireEvent.mouseDown(element);
   fireEvent.mouseUp(element);
   fireEvent.click(element);

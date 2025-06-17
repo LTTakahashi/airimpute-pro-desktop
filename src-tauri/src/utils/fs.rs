@@ -48,6 +48,7 @@ pub fn sanitize_path(path: &str) -> Result<PathBuf> {
 }
 
 /// Ensure directory exists, creating it if necessary
+#[allow(dead_code)]
 pub fn ensure_dir_exists(path: &Path) -> Result<()> {
     if !path.exists() {
         std::fs::create_dir_all(path)
@@ -66,6 +67,7 @@ pub fn get_file_size(path: &Path) -> Result<u64> {
 }
 
 /// Check if path is within allowed directory
+#[allow(dead_code)]
 pub fn is_path_allowed(path: &Path, allowed_dirs: &[PathBuf]) -> bool {
     for allowed_dir in allowed_dirs {
         if path.starts_with(allowed_dir) {

@@ -1,22 +1,25 @@
 use std::sync::Arc;
 use parking_lot::RwLock;
 use dashmap::DashMap;
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 use anyhow::Result;
 
 use crate::{
     db::Database,
-    python::{PythonRuntime, safe_bridge_v2::SafePythonBridge},
-    services::cache::CacheManager,
+    python::{PythonRuntime, safe_bridge_v2::SafePythonBridge, arrow_bridge::PythonWorkerPool},
+    services::{cache::CacheManager, offline_resources::OfflineResourceManager},
     core::{
         project::Project,
         data::Dataset,
         imputation::ImputationJob,
+        imputation_result::ImputationResult,
         progress_tracker::ProgressManager,
     },
+    commands::imputation_v3::ImputationJobV3,
 };
 
 /// Central application state manager with thread-safe access
@@ -58,11 +61,31 @@ pub struct AppState {
     /// Active imputation jobs
     pub imputation_jobs: Arc<DashMap<Uuid, Arc<tokio::sync::Mutex<ImputationJob>>>>,
     
+    /// Active imputation jobs (v3 architecture)
+    pub imputation_jobs_v3: Arc<RwLock<HashMap<Uuid, ImputationJobV3>>>,
+    
+    /// Imputation results storage
+    pub imputation_results: Arc<RwLock<HashMap<Uuid, ImputationResult>>>,
+    
+    /// Python worker pool for high-performance computing
+    pub worker_pool: Arc<RwLock<Option<PythonWorkerPool>>>,
+    
     /// Recent project paths
     pub recent_projects: Arc<RwLock<Vec<String>>>,
     
+    /// Offline resources manager
+    pub offline_resources: Arc<OfflineResourceManager>,
+    
     /// Application data directory path
     pub app_data_dir: std::path::PathBuf,
+}
+
+impl AppState {
+    /// Get a clone of the inner state (for async tasks)
+    pub fn inner(&self) -> Arc<AppState> {
+        // Since AppState is already Clone, we can create an Arc from self
+        Arc::new(self.clone())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,7 +215,7 @@ pub struct SystemMetrics {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct SystemMetricsInner {
+pub struct SystemMetricsInner {
     pub memory_usage_mb: f64,
     pub cpu_usage_percent: f32,
     pub active_computations: usize,
@@ -277,6 +300,9 @@ impl AppStateManager {
         // Load user preferences
         let preferences = Self::load_preferences(&app_handle)?;
         
+        // Initialize offline resources
+        let offline_resources = OfflineResourceManager::new();
+        
         // Create state
         let state = Arc::new(AppState {
             db: Arc::new(db),
@@ -291,7 +317,11 @@ impl AppStateManager {
             task_handles: Arc::new(DashMap::new()),
             datasets: Arc::new(DashMap::new()),
             imputation_jobs: Arc::new(DashMap::new()),
+            imputation_jobs_v3: Arc::new(RwLock::new(HashMap::new())),
+            imputation_results: Arc::new(RwLock::new(HashMap::new())),
+            worker_pool: Arc::new(RwLock::new(None)),
             recent_projects: Arc::new(RwLock::new(Vec::new())),
+            offline_resources: Arc::new(offline_resources),
             app_data_dir,
         });
         

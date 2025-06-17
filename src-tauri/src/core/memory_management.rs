@@ -3,10 +3,9 @@
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use std::thread;
-use std::ptr::NonNull;
 use std::backtrace::Backtrace;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn, error, info};
@@ -46,6 +45,7 @@ enum AllocationType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct MemoryStatistics {
     pub total_allocated: usize,
     pub total_freed: usize,
@@ -130,16 +130,17 @@ unsafe impl GlobalAlloc for TrackingAllocator {
 }
 
 impl MemoryTracker {
-    pub fn new(config: MemoryConfig) -> Self {
-        let tracker = Self {
+    pub fn new(config: MemoryConfig) -> Arc<Self> {
+        let automatic_cleanup = config.automatic_cleanup;
+        let tracker = Arc::new(Self {
             allocations: RwLock::new(HashMap::new()),
             statistics: RwLock::new(MemoryStatistics::default()),
             config,
-        };
+        });
 
         // Start garbage collection thread if enabled
-        if config.automatic_cleanup {
-            let tracker_clone = Arc::new(tracker.clone());
+        if automatic_cleanup {
+            let tracker_clone = tracker.clone();
             thread::spawn(move || {
                 tracker_clone.garbage_collection_loop();
             });
@@ -232,7 +233,7 @@ impl MemoryTracker {
         info!("Running garbage collection");
         
         let now = Instant::now();
-        let mut allocations = self.allocations.write().unwrap();
+        let allocations = self.allocations.write().unwrap();
         let mut leaked = Vec::new();
         
         // Detect potential leaks (allocations older than 5 minutes)
@@ -404,21 +405,6 @@ pub struct AllocationSummary {
     pub allocation_type: String,
 }
 
-impl Default for MemoryStatistics {
-    fn default() -> Self {
-        Self {
-            total_allocated: 0,
-            total_freed: 0,
-            current_usage: 0,
-            peak_usage: 0,
-            allocation_count: 0,
-            free_count: 0,
-            leaked_bytes: 0,
-            largest_allocation: 0,
-            allocations_by_type: HashMap::new(),
-        }
-    }
-}
 
 /// RAII guard for scoped memory tracking
 pub struct MemoryScope {

@@ -3,13 +3,12 @@
 
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
-use pyo3::exceptions::{PyException, PyRuntimeError, PyMemoryError};
+use pyo3::exceptions::PyRuntimeError;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use serde_json;
-use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 use tracing::{debug, info, warn, error, instrument};
 use uuid::Uuid;
@@ -391,7 +390,7 @@ resource.setrlimit(resource.RLIMIT_AS, ({} * 1024 * 1024, hard))
             };
             
             // Convert result
-            let json_str = self.python_to_json_string(py, result)?;
+            let json_str = self.python_to_json_string(py, result.into())?;
             let value: T = serde_json::from_str(&json_str)
                 .map_err(|e| PyRuntimeError::new_err(format!("JSON deserialization failed: {}", e)))?;
             
@@ -463,9 +462,11 @@ resource.setrlimit(resource.RLIMIT_AS, ({} * 1024 * 1024, hard))
         
         Python::with_gil(|py| {
             let error_type = error.get_type(py).name()
-                .map_err(|e| AcademicError::PythonError { 
-                    context: ErrorContext::new("Getting error type name"),
-                    message: e.to_string() 
+                .map_err(|e| AcademicError::NumericalComputation { 
+                    context: ErrorContext::new(),
+                    message: e.to_string(),
+                    operation: "Getting Python error type name".to_string(),
+                    numerical_context: Default::default(),
                 })?
                 .to_string();
             let error_msg = error.value(py).to_string();
@@ -613,7 +614,7 @@ mod tests {
     #[tokio::test]
     async fn test_python_bridge_initialization() {
         let config = PythonBridgeConfig::default();
-        let memory_tracker = Arc::new(MemoryTracker::new(MemoryConfig::default()));
+        let memory_tracker = MemoryTracker::new(MemoryConfig::default());
         let operation_manager = Arc::new(OperationManager::new());
         
         let bridge = SafePythonBridge::new(config, memory_tracker, operation_manager);

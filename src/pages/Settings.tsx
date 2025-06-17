@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Save, RotateCcw, Monitor, Cpu, Database, Bell } from 'lucide-react';
+import { Settings as SettingsIcon, Save, RotateCcw, Monitor, Cpu, Database } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { ScientificCard } from '@/components/layout/ScientificCard';
 import { NumericInput } from '@/components/forms/NumericInput';
 import { invoke } from '@tauri-apps/api/tauri';

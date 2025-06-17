@@ -2,7 +2,7 @@
  * Scientific validation utilities
  */
 
-import { ScientificConstraint } from '@/types/components';
+import type { ScientificConstraint } from '@/types/components';
 
 export interface ValidationResult {
   valid: boolean;

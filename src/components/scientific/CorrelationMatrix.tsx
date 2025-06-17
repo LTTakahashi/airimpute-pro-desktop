@@ -6,8 +6,8 @@
 
 import React, { useMemo, useCallback } from 'react';
 import Plot from 'react-plotly.js';
-import type { Data as PlotlyData, Layout, Config } from 'plotly.js';
-import { CorrelationMatrixProps } from '@/types/components/visualization';
+import type { Layout, Config } from 'plotly.js';
+import type { CorrelationMatrixProps } from '@/types/components/visualization';
 import { getScientificAriaProps, announce } from '@/lib/accessibility';
 import { cn } from '@/utils/cn';
 import { useStore } from '@/store';
@@ -26,7 +26,6 @@ export const CorrelationMatrix: React.FC<CorrelationMatrixProps> = ({
   width = 600,
   height = 600,
   responsive = true,
-  exportable = true,
   interactive = true,
   className,
   'aria-label': ariaLabel,
@@ -205,7 +204,6 @@ export const CorrelationMatrix: React.FC<CorrelationMatrixProps> = ({
   const hierarchicalCluster = (distances: number[][]): number[] => {
     const n = distances.length;
     const clusters: number[][] = Array(n).fill(null).map((_, i) => [i]);
-    const order: number[] = [];
     
     // Simple agglomerative clustering
     while (clusters.length > 1) {

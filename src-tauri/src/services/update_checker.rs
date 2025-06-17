@@ -1,10 +1,8 @@
 use tauri::AppHandle;
+use tracing::info;
 
-pub fn start_update_checker(app_handle: AppHandle) {
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
-            // Update checking implementation would go here
-        }
-    });
+/// Offline-only update checker (disabled for complete offline operation)
+pub fn start_update_checker(_app_handle: AppHandle) {
+    info!("Update checker disabled - app runs completely offline");
+    // No network calls or update checks - app is fully offline
 }

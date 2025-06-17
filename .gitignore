@@ -66,3 +66,16 @@ coverage/
 *.temp
 tmp/
 temp/
+
+# Security - NEVER commit keys or certificates
+keys/
+*.key
+*.pem
+*.p12
+*.pfx
+*.cert
+*.crt
+
+# Build directories
+build-windows/
+dist/windows/

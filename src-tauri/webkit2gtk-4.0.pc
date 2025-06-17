@@ -1,0 +1,11 @@
+prefix=/usr
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib/x86_64-linux-gnu
+includedir=${prefix}/include
+
+Name: WebKit2GTK+ 4.0
+Description: WebKit2GTK+ 4.0 (compatibility wrapper for 4.1)
+Version: 2.48.1
+Requires: webkit2gtk-4.1
+Libs: -L${libdir} -lwebkit2gtk-4.1
+Cflags: -I${includedir}/webkitgtk-4.1

@@ -1,5 +1,4 @@
 use crate::error::CommandError;
-use crate::python::PythonRuntime;
 use pyo3::types::PyString;
 use crate::state::AppState;
 use pyo3::prelude::*;
@@ -168,7 +167,7 @@ pub async fn run_benchmark(
                 progress_callback(current_run, total_runs, method_name, dataset_name);
                 
                 // Run single benchmark
-                let args = pyo3::types::PyTuple::new(py, &[
+                let args = pyo3::types::PyTuple::new(py, [
                     dataset_py,
                     method_name.into_py(py).as_ref(py),
                     cv_splits.into_py(py).as_ref(py),

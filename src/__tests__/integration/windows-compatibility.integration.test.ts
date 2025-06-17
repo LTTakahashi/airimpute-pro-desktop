@@ -3,9 +3,8 @@
  * Ensures compatibility with Windows file systems and Tauri runtime
  */
 
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/tauri';
-import { platform } from 'os';
 import { IS_WINDOWS, BASE_TIMEOUT } from '@/test/setup.integration';
 
 // Skip these tests on non-Windows platforms in CI
@@ -104,7 +103,7 @@ describeWindows('Windows-specific Integration Tests', () => {
     it('retries on temporary file locks', async () => {
       let attempts = 0;
       
-      vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+      vi.mocked(invoke).mockImplementation(async (cmd) => {
         if (cmd === 'export_to_csv' && attempts < 2) {
           attempts++;
           throw new Error('File is locked');

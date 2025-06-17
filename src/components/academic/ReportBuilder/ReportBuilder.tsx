@@ -16,27 +16,20 @@ import { cn } from '@/utils/cn';
 import { 
   FileText,
   Download,
-  Eye,
-  Settings,
-  Plus,
   Trash2,
   ChevronUp,
   ChevronDown,
   Save,
-  Upload,
-  Layout,
   Type,
   Image,
   Table,
-  BarChart,
   List,
   Check,
-  AlertCircle,
-  Lock,
-  Unlock
+  Lock
 } from 'lucide-react';
 import { LaTeXRenderer } from '../LaTeX/LaTeXRenderer';
-import { CitationGenerator, Citation } from '../Citation/CitationGenerator';
+import type { Citation } from '../Citation/CitationGenerator';
+import { CitationGenerator } from '../Citation/CitationGenerator';
 import { Tooltip } from '@/components/ui/Tooltip';
 
 export interface ReportTemplate {

@@ -1,0 +1,99 @@
+# Secure Windows cross-compilation environment for AirImpute Pro
+# Version 2.0 - User-centric Rust installation approach
+# Based on Gemini's security review and recommendations
+
+FROM debian:bookworm-slim
+
+# Metadata
+LABEL maintainer="AirImpute Team"
+LABEL description="Secure Windows cross-compilation environment"
+LABEL version="2.0.0"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    xz-utils \
+    unzip \
+    jq \
+    git \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    build-essential \
+    libssl-dev \
+    pkg-config \
+    python3 \
+    python3-pip \
+    python3-venv \
+    nodejs \
+    npm \
+    nsis \
+    osslsigncode \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Zig for cross-compilation (with SHA256 verification)
+ARG ZIG_VERSION=0.11.0
+ARG ZIG_SHA256=2d00e789fec4f71790a6e7bf83ff91d564943c5ee843c5fd966efc474b423047
+
+RUN curl -L -o zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" && \
+    echo "${ZIG_SHA256}  zig.tar.xz" | sha256sum -c - && \
+    mkdir -p /opt/zig && \
+    tar -xJ -f zig.tar.xz -C /opt/zig --strip-components=1 && \
+    rm zig.tar.xz && \
+    ln -s /opt/zig/zig /usr/local/bin/zig
+
+# Verify Zig installation
+RUN zig version
+
+# Create non-root user
+RUN useradd -m -u 1000 -s /bin/bash builder
+
+# Create cache directories with proper ownership
+RUN mkdir -p /cache/cargo /cache/rustup /cache/pip /cache/npm /build && \
+    chown -R builder:builder /cache /build
+
+# Security: Set restrictive umask via PAM
+RUN echo "session optional pam_umask.so umask=0077" >> /etc/pam.d/common-session
+
+# Switch to non-root user BEFORE installing Rust
+USER builder
+
+# Set environment variables for user-owned toolchain
+ENV RUSTUP_HOME=/cache/rustup
+ENV CARGO_HOME=/cache/cargo
+ENV PATH="/cache/cargo/bin:${PATH}"
+ENV PIP_CACHE_DIR=/cache/pip
+ENV NPM_CONFIG_CACHE=/cache/npm
+
+# Install Rust toolchain as builder user with specific version
+ARG RUST_VERSION=1.82.0
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+    sh -s -- -y --default-toolchain ${RUST_VERSION} --profile minimal
+
+# Add Windows target
+RUN rustup target add x86_64-pc-windows-msvc
+
+# Install essential cargo tools
+RUN cargo install cargo-zigbuild --version 0.17.5
+
+# Install cargo-audit for security scanning
+RUN cargo install cargo-audit --version 0.18.3 || \
+    cargo install cargo-audit --version 0.17.6 || \
+    echo "WARNING: cargo-audit installation failed, trying older version"
+
+# Set working directory
+WORKDIR /build
+
+# Configure Zig as the linker for Windows MSVC target
+ENV CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER="zig cc -target x86_64-windows-msvc"
+ENV CC_x86_64_pc_windows_msvc="zig cc -target x86_64-windows-msvc"
+ENV CXX_x86_64_pc_windows_msvc="zig c++ -target x86_64-windows-msvc"
+ENV AR_x86_64_pc_windows_msvc="zig ar"
+
+# Health check
+HEALTHCHECK --interval=5m --timeout=3s \
+  CMD zig version && rustc --version && cargo --version || exit 1
+
+# Default command
+CMD ["/bin/bash"]

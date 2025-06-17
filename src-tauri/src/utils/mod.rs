@@ -1,7 +1,6 @@
 pub mod fs;
 
 use std::time::{Duration, Instant};
-use anyhow::Result;
 
 /// Performance timer for measuring execution time
 pub struct Timer {
@@ -47,6 +46,7 @@ pub fn format_bytes(bytes: u64) -> String {
 }
 
 /// Format duration to human readable string
+#[allow(dead_code)]
 pub fn format_duration(duration: Duration) -> String {
     let total_seconds = duration.as_secs();
     
@@ -64,6 +64,7 @@ pub fn format_duration(duration: Duration) -> String {
 }
 
 /// Sanitize file paths for security
+#[allow(dead_code)]
 pub fn sanitize_filename(filename: &str) -> String {
     filename
         .chars()

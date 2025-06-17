@@ -249,9 +249,9 @@ pub fn check_memory_available(required_mb: usize) -> Result<()> {
 }
 
 pub fn validate_dataframe_columns(columns: &[String], required: &[&str]) -> Result<()> {
-    let missing: Vec<_> = required
+    let missing: Vec<&str> = required
         .iter()
-        .filter(|&&req| !columns.contains(&req.to_string()))
+        .filter(|&&req| !columns.contains(&req.to_string())).copied()
         .collect();
     
     if !missing.is_empty() {

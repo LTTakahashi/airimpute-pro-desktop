@@ -3,11 +3,11 @@
  * Ensures scientific accuracy and accessibility compliance
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TimeSeriesChart } from '../scientific/TimeSeriesChart';
-import { TimeSeriesDataPoint } from '@/types/components';
+import type { TimeSeriesDataPoint } from '@/types/components';
 
 // Mock Plotly to avoid rendering issues in tests
 vi.mock('react-plotly.js', () => ({
@@ -147,7 +147,7 @@ describe('TimeSeriesChart', () => {
       <TimeSeriesChart data={mockData} uiMode="student" />
     );
     
-    let config = JSON.parse(
+    const config = JSON.parse(
       screen.getByTestId('mock-plotly').getAttribute('data-config') || '{}'
     );
     expect(config.displayModeBar).toBe(false);

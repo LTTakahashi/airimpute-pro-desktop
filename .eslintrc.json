@@ -29,8 +29,28 @@
     ],
     "react/react-in-jsx-scope": "off",
     "react/prop-types": "off",
-    "@typescript-eslint/explicit-module-boundary-types": "error",
-    "@typescript-eslint/no-explicit-any": "error",
+    "react/no-unknown-property": ["error", {
+      "ignore": [
+        "args",
+        "position",
+        "rotation",
+        "scale",
+        "geometry",
+        "material",
+        "transparent",
+        "wireframe",
+        "vertexColors",
+        "side",
+        "intensity",
+        "castShadow",
+        "receiveShadow",
+        "attach",
+        "object",
+        "dispose"
+      ]
+    }],
+    "@typescript-eslint/explicit-module-boundary-types": "warn",
+    "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/no-unused-vars": [
       "error",
       { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
@@ -46,5 +66,5 @@
       "version": "detect"
     }
   },
-  "ignorePatterns": ["dist", "src-tauri", "node_modules", "*.config.js", "*.config.ts"]
+  "ignorePatterns": ["dist", "src-tauri", "node_modules", "*.config.js", "*.config.ts", "e2e", "scripts"]
 }

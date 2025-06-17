@@ -154,9 +154,8 @@ pub async fn load_report(
     report_id: String,
 ) -> Result<Report> {
     // TODO: Implement actual database loading
-    Err(crate::error::simple_error::AppError::FileNotFound {
-        path: format!("report/{}", report_id),
-        suggestion: "Please check the report ID".to_string(),
+    Err(crate::error::CommandError::DatasetNotFound {
+        id: report_id.to_string(),
     })
 }
 

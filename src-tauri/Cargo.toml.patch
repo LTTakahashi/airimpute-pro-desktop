@@ -1,0 +1,9 @@
+# Patch to use webkit2gtk-4.1 compatible versions
+# Apply this patch if you want to update to newer versions that support webkit2gtk-4.1
+
+[patch.crates-io]
+webkit2gtk = { git = "https://github.com/gtk-rs/webkit2gtk-rs", features = ["v2_38"] }
+webkit2gtk-sys = { git = "https://github.com/gtk-rs/webkit2gtk-rs" }
+
+# Note: This requires updating Tauri to version 2.x which has better webkit2gtk-4.1 support
+# tauri = { version = "2.0.0-beta", features = [...] }

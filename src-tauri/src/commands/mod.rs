@@ -1,9 +1,12 @@
 pub mod analysis;
 pub mod benchmark;
 pub mod data;
+pub mod debug;
 pub mod export;
+pub mod help;
 pub mod imputation;
 pub mod imputation_v2;
+pub mod imputation_v3;
 pub mod project;
 pub mod publication;
 pub mod settings;
