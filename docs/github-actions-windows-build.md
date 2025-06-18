@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide explains how to use GitHub Actions to build Windows executables for AirImpute Pro Desktop application using cross-compilation from Ubuntu with the Zig toolchain.
+This guide explains how to use GitHub Actions to build Windows executables for AirImpute Pro Desktop application. We provide two working methods: native Windows builds (recommended) and MinGW cross-compilation from Ubuntu.
 
 ## Prerequisites
 
@@ -16,7 +16,9 @@ This guide explains how to use GitHub Actions to build Windows executables for A
 
 1. Go to your GitHub repository
 2. Click on "Actions" tab
-3. Select "Build Windows Executable" workflow
+3. Select one of the workflows:
+   - "Build Windows Executable (Native)" - Recommended
+   - "Build Windows Executable (MinGW Cross-Compile)" - Alternative
 4. Click "Run workflow"
 5. Configure build parameters:
    - **Build type**: Choose between `release` (optimized) or `debug` (with debug symbols)

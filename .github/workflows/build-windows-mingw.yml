@@ -1,0 +1,219 @@
+name: Build Windows Executable (MinGW Cross-Compile)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+      version:
+        description: 'Version to build (e.g., 1.0.0)'
+        required: false
+        default: '1.0.0'
+
+jobs:
+  build-windows:
+    name: Build Windows Executable (GNU)
+    runs-on: ubuntu-22.04
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.82.0
+          targets: x86_64-pc-windows-gnu
+          components: rustfmt, clippy
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            wget \
+            pkg-config \
+            libssl-dev \
+            mingw-w64 \
+            nsis \
+            nsis-pluginapi \
+            lld \
+            llvm
+
+      - name: Configure Cargo for MinGW cross-compilation
+        run: |
+          mkdir -p .cargo
+          cat > .cargo/config.toml << 'EOF'
+          [target.x86_64-pc-windows-gnu]
+          linker = "x86_64-w64-mingw32-gcc"
+          ar = "x86_64-w64-mingw32-ar"
+          
+          [target.x86_64-pc-windows-gnu.env]
+          CC_x86_64-pc-windows-gnu = "x86_64-w64-mingw32-gcc"
+          CXX_x86_64-pc-windows-gnu = "x86_64-w64-mingw32-g++"
+          AR_x86_64-pc-windows-gnu = "x86_64-w64-mingw32-ar"
+          EOF
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-rust-mingw-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-mingw-
+
+      - name: Cache Node dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+      
+      - name: Download Python Windows embeddable package
+        run: |
+          PYTHON_VERSION="3.10.11"
+          PYTHON_EMBED_SHA256="608619f8619075629c9c69f361352a0da6ed7e62f83a0e19c63e0ea32eb7629d"
+          
+          # Download the embeddable package
+          wget "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-embed-amd64.zip"
+          echo "${PYTHON_EMBED_SHA256} python-${PYTHON_VERSION}-embed-amd64.zip" | sha256sum -c -
+          
+          # Extract to python-embed-amd64 directory
+          mkdir -p python-embed-amd64
+          unzip -q python-${PYTHON_VERSION}-embed-amd64.zip -d python-embed-amd64
+          
+          # Set PYTHONHOME for PyO3 build
+          echo "PYTHONHOME=$PWD/python-embed-amd64" >> $GITHUB_ENV
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Tauri application
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY || '' }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD || '' }}
+        run: |
+          if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
+            npm run tauri build -- --debug --target x86_64-pc-windows-gnu
+          else
+            npm run tauri build -- --target x86_64-pc-windows-gnu
+          fi
+
+      - name: Create installer
+        run: |
+          mkdir -p dist/windows
+          if [ "${{ github.event.inputs.build_type }}" = "debug" ]; then
+            BUILD_DIR="src-tauri/target/x86_64-pc-windows-gnu/debug"
+          else
+            BUILD_DIR="src-tauri/target/x86_64-pc-windows-gnu/release"
+          fi
+          
+          # Copy executable
+          cp "$BUILD_DIR/airimpute-pro.exe" dist/windows/ || cp "$BUILD_DIR/"*.exe dist/windows/
+          
+          # Copy MinGW runtime DLLs
+          cp /usr/lib/gcc/x86_64-w64-mingw32/10-win32/*.dll dist/windows/ 2>/dev/null || true
+          cp /usr/x86_64-w64-mingw32/lib/*.dll dist/windows/ 2>/dev/null || true
+          
+          # Create NSIS installer script
+          cat > installer.nsi << 'EOF'
+          !define APPNAME "AirImpute Pro"
+          !define COMPANYNAME "AirImpute"
+          !define DESCRIPTION "Air Quality Data Imputation Desktop Application"
+          
+          Name "${APPNAME}"
+          OutFile "dist/windows/AirImputePro-Setup.exe"
+          InstallDir "$PROGRAMFILES64\${APPNAME}"
+          
+          Section "Install"
+            SetOutPath $INSTDIR
+            File "dist/windows/*.exe"
+            File "dist/windows/*.dll"
+            
+            WriteUninstaller "$INSTDIR\uninstall.exe"
+            
+            CreateShortCut "$DESKTOP\${APPNAME}.lnk" "$INSTDIR\airimpute-pro.exe"
+            CreateDirectory "$SMPROGRAMS\${APPNAME}"
+            CreateShortCut "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk" "$INSTDIR\airimpute-pro.exe"
+            CreateShortCut "$SMPROGRAMS\${APPNAME}\Uninstall.lnk" "$INSTDIR\uninstall.exe"
+          SectionEnd
+          
+          Section "Uninstall"
+            Delete "$INSTDIR\*.exe"
+            Delete "$INSTDIR\*.dll"
+            Delete "$DESKTOP\${APPNAME}.lnk"
+            Delete "$SMPROGRAMS\${APPNAME}\${APPNAME}.lnk"
+            Delete "$SMPROGRAMS\${APPNAME}\Uninstall.lnk"
+            RMDir "$SMPROGRAMS\${APPNAME}"
+            RMDir $INSTDIR
+          SectionEnd
+          EOF
+          
+          makensis installer.nsi
+
+      - name: Generate checksums
+        run: |
+          cd dist/windows
+          sha256sum *.exe *.dll > checksums.txt
+          cd ../..
+      
+      - name: Create release info
+        run: |
+          echo "## Build Information" > dist/windows/build-info.txt
+          echo "Version: ${{ github.event.inputs.version }}" >> dist/windows/build-info.txt
+          echo "Build Type: ${{ github.event.inputs.build_type }}" >> dist/windows/build-info.txt
+          echo "Build Target: x86_64-pc-windows-gnu (MinGW)" >> dist/windows/build-info.txt
+          echo "Build Date: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> dist/windows/build-info.txt
+          echo "Commit: ${{ github.sha }}" >> dist/windows/build-info.txt
+          echo "Rust Version: $(rustc --version)" >> dist/windows/build-info.txt
+          echo "Node Version: $(node --version)" >> dist/windows/build-info.txt
+          echo "Python Version: $(python --version)" >> dist/windows/build-info.txt
+          echo "MinGW Version: $(x86_64-w64-mingw32-gcc --version | head -1)" >> dist/windows/build-info.txt
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-gnu-${{ github.event.inputs.build_type }}-${{ github.event.inputs.version }}
+          path: |
+            dist/windows/*.exe
+            dist/windows/*.dll
+            dist/windows/checksums.txt
+            dist/windows/build-info.txt
+          retention-days: 30
