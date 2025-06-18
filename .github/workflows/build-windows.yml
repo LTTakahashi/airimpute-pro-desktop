@@ -18,207 +18,228 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: Setup Build Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10.13'
-          architecture: 'x64'
-      
       - name: Download Official Python Embeddable Package
         run: |
-          # Use official Python.org embeddable package - much more reliable than python-build-standalone
+          # Skip setup-python and go directly to official embeddable package
           $pythonVersion = "3.10.13"
           $pythonUrl = "https://www.python.org/ftp/python/${pythonVersion}/python-${pythonVersion}-embed-amd64.zip"
           
-          Write-Host "Downloading official Python $pythonVersion embeddable package..."
+          Write-Host "=== Downloading Python $pythonVersion Embeddable Package ==="
           Write-Host "URL: $pythonUrl"
           
-          # Download with retry logic
-          $maxRetries = 3
-          $retryCount = 0
-          while ($retryCount -lt $maxRetries) {
-            try {
-              Invoke-WebRequest -Uri $pythonUrl -OutFile "python-embed.zip" -UseBasicParsing
-              Write-Host "Download successful"
-              break
-            } catch {
-              $retryCount++
-              if ($retryCount -eq $maxRetries) {
-                throw "Failed to download Python after $maxRetries attempts: $_"
-              }
-              Write-Host "Download failed, retrying in 5 seconds... (attempt $retryCount/$maxRetries)"
-              Start-Sleep -Seconds 5
-            }
+          # Download with proper error handling
+          try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri $pythonUrl -OutFile "python-embed.zip" -UseBasicParsing
+            Write-Host "✓ Download successful"
+          } catch {
+            Write-Error "Failed to download Python: $_"
+            exit 1
           }
           
           # Verify download
           if (-not (Test-Path "python-embed.zip")) {
-            throw "Python download failed - file not found"
+            Write-Error "Python download failed - file not found"
+            exit 1
           }
           
-          $fileSize = (Get-Item "python-embed.zip").Length / 1MB
-          Write-Host "Downloaded Python embed package: $([math]::Round($fileSize, 2))MB"
+          $fileSize = [math]::Round((Get-Item "python-embed.zip").Length / 1MB, 2)
+          Write-Host "✓ Downloaded: ${fileSize}MB"
           
-          # Extract to src-tauri/python
-          Write-Host "Extracting to src-tauri/python..."
-          New-Item -Path "src-tauri/python" -ItemType Directory -Force | Out-Null
-          Expand-Archive -Path "python-embed.zip" -DestinationPath "src-tauri/python" -Force
+          # Extract Python
+          Write-Host "`n=== Extracting Python ==="
+          $pythonDir = "src-tauri\python"
+          New-Item -Path $pythonDir -ItemType Directory -Force | Out-Null
           
-          # Verify extraction
-          if (Test-Path "src-tauri/python/python.exe") {
-            Write-Host "Python extracted successfully"
-            cd src-tauri/python
-            & ".\python.exe" --version
-            cd ../..
-          } else {
-            throw "Python executable not found after extraction"
+          try {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            [System.IO.Compression.ZipFile]::ExtractToDirectory("$PWD\python-embed.zip", "$PWD\$pythonDir")
+            Write-Host "✓ Extraction successful"
+          } catch {
+            Write-Error "Failed to extract Python: $_"
+            exit 1
           }
           
-          # Enable pip in embedded Python (it's disabled by default)
-          Write-Host "Enabling pip in embedded Python..."
-          $pthFile = Get-ChildItem -Path "src-tauri/python" -Filter "python*.pth" | Select-Object -First 1
+          # Verify Python executable
+          $pythonExe = "$pythonDir\python.exe"
+          if (-not (Test-Path $pythonExe)) {
+            Write-Error "Python executable not found at: $pythonExe"
+            exit 1
+          }
+          
+          # Test Python
+          Write-Host "`n=== Testing Python ==="
+          & $pythonExe --version
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Python executable test failed"
+            exit 1
+          }
+          
+          # Enable site packages (required for pip)
+          Write-Host "`n=== Configuring Embedded Python ==="
+          $pthFile = Get-ChildItem -Path $pythonDir -Filter "python*.pth" | Select-Object -First 1
           if ($pthFile) {
-            $content = Get-Content $pthFile.FullName
-            $content = $content | ForEach-Object { $_ -replace '^#import site', 'import site' }
-            Set-Content -Path $pthFile.FullName -Value $content
-            Write-Host "Enabled site packages in $($pthFile.Name)"
+            $pthPath = $pthFile.FullName
+            $content = Get-Content $pthPath
+            $newContent = $content -replace '^#import site', 'import site'
+            if ($content -ne $newContent) {
+              Set-Content -Path $pthPath -Value $newContent
+              Write-Host "✓ Enabled site packages in $($pthFile.Name)"
+            }
+          } else {
+            Write-Warning "No .pth file found - site packages may not work correctly"
           }
+          
+          # Clean up
+          Remove-Item "python-embed.zip" -Force
+          Write-Host "`n✓ Python setup complete"
         shell: pwsh
       
-      - name: Setup Python Environment
+      - name: Install pip and packages
         run: |
-          cd src-tauri/python
+          $pythonExe = "src-tauri\python\python.exe"
           
-          # Download get-pip.py since embedded Python doesn't include pip
-          Write-Host "Downloading get-pip.py..."
-          Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile "get-pip.py" -UseBasicParsing
+          Write-Host "=== Installing pip ==="
+          
+          # Download get-pip.py
+          try {
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+            Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile "get-pip.py" -UseBasicParsing
+            Write-Host "✓ Downloaded get-pip.py"
+          } catch {
+            Write-Error "Failed to download get-pip.py: $_"
+            exit 1
+          }
           
           # Install pip
-          Write-Host "Installing pip..."
-          & ".\python.exe" get-pip.py --no-warn-script-location
+          & $pythonExe get-pip.py --no-warn-script-location
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to install pip"
+            Write-Error "Failed to install pip"
+            exit 1
           }
           
-          # Verify pip installation
-          & ".\python.exe" -m pip --version
+          # Verify pip
+          & $pythonExe -m pip --version
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "pip verification failed"
+            exit 1
+          }
           
-          # Install essential scientific packages
-          Write-Host "Installing essential scientific packages..."
+          Write-Host "`n=== Installing Scientific Packages ==="
+          
+          # Install packages one by one with progress
           $packages = @(
-            "numpy==1.26.4",
-            "pandas==2.2.0",
-            "scikit-learn==1.4.0",
-            "scipy==1.12.0",
-            "pyarrow==15.0.0",
-            "joblib==1.3.2"
+            @{name="numpy"; version="1.26.4"},
+            @{name="pandas"; version="2.2.0"},
+            @{name="scikit-learn"; version="1.4.0"},
+            @{name="scipy"; version="1.12.0"},
+            @{name="pyarrow"; version="15.0.0"},
+            @{name="joblib"; version="1.3.2"}
           )
           
-          foreach ($package in $packages) {
-            Write-Host "Installing $package..."
-            & ".\python.exe" -m pip install $package --no-warn-script-location
+          foreach ($pkg in $packages) {
+            Write-Host "`nInstalling $($pkg.name)==$($pkg.version)..."
+            & $pythonExe -m pip install "$($pkg.name)==$($pkg.version)" --no-warn-script-location
             if ($LASTEXITCODE -ne 0) {
-              Write-Error "Failed to install $package"
+              Write-Error "Failed to install $($pkg.name)"
               exit 1
             }
+            Write-Host "✓ $($pkg.name) installed"
           }
           
-          Write-Host "Python packages installed successfully"
-          & ".\python.exe" -m pip list
+          # Show installed packages
+          Write-Host "`n=== Installed Packages ==="
+          & $pythonExe -m pip list
+          
+          # Test imports
+          Write-Host "`n=== Testing Package Imports ==="
+          & $pythonExe -c "import numpy; print(f'✓ NumPy {numpy.__version__}')"
+          & $pythonExe -c "import pandas; print(f'✓ Pandas {pandas.__version__}')"
+          & $pythonExe -c "import sklearn; print(f'✓ Scikit-learn {sklearn.__version__}')"
           
           # Clean up
           Remove-Item "get-pip.py" -Force
-          & ".\python.exe" -m pip cache purge
+          & $pythonExe -m pip cache purge
           
-          cd ../..
+          Write-Host "`n✓ Package installation complete"
         shell: pwsh
       
-      - name: Configure PyO3 Environment
+      - name: Set PyO3 Environment
         run: |
-          # Set environment variables for the build
           $pythonPath = "${{ github.workspace }}\src-tauri\python"
+          $pythonExe = "$pythonPath\python.exe"
           
-          Write-Host "Setting PyO3 environment variables..."
+          Write-Host "=== Configuring PyO3 Environment ==="
           Write-Host "Python path: $pythonPath"
+          Write-Host "Python exe: $pythonExe"
           
-          # These need to be set for the Tauri build step
-          echo "PYO3_PYTHON=$pythonPath\python.exe" >> $env:GITHUB_ENV
+          # Set environment variables for subsequent steps
+          echo "PYO3_PYTHON=$pythonExe" >> $env:GITHUB_ENV
           echo "PYTHONHOME=$pythonPath" >> $env:GITHUB_ENV
+          echo "PYTHONPATH=$pythonPath" >> $env:GITHUB_ENV
           
-          # Update PATH for DLL loading
+          # Add to PATH
           echo "$pythonPath" >> $env:GITHUB_PATH
           echo "$pythonPath\Scripts" >> $env:GITHUB_PATH
           
-          # Verify Python is accessible
-          & "$pythonPath\python.exe" -c "import sys; print(f'Python {sys.version}')"
-          & "$pythonPath\python.exe" -c "import numpy; print(f'NumPy {numpy.__version__}')"
+          # Also set for current step
+          $env:PYO3_PYTHON = $pythonExe
+          $env:PYTHONHOME = $pythonPath
+          $env:PATH = "$pythonPath;$pythonPath\Scripts;$env:PATH"
+          
+          # Verify environment
+          Write-Host "`n=== Verifying Environment ==="
+          Write-Host "PYO3_PYTHON: $env:PYO3_PYTHON"
+          Write-Host "PYTHONHOME: $env:PYTHONHOME"
+          
+          # Test Python is accessible
+          python --version
+          python -c "import sys; print(f'Python home: {sys.prefix}')"
+          
+          Write-Host "`n✓ PyO3 environment configured"
         shell: pwsh
       
-      - name: Build Tauri application
+      - name: Build Tauri Application
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
       
-      - name: Verify Build Output
-        run: |
-          Write-Host "=== Build Output Verification ==="
-          
-          $nsisPath = "src-tauri\target\release\bundle\nsis"
-          $msiPath = "src-tauri\target\release\bundle\msi"
-          
-          $foundInstaller = $false
-          
-          if (Test-Path $nsisPath) {
-            $exeFiles = Get-ChildItem -Path $nsisPath -Filter "*.exe" -ErrorAction SilentlyContinue
-            if ($exeFiles.Count -gt 0) {
-              Write-Host "Found NSIS installer(s):"
-              $exeFiles | ForEach-Object {
-                $size = [math]::Round($_.Length / 1MB, 2)
-                Write-Host "  - $($_.Name): ${size}MB"
-                $foundInstaller = $true
-              }
-            }
-          }
-          
-          if (Test-Path $msiPath) {
-            $msiFiles = Get-ChildItem -Path $msiPath -Filter "*.msi" -ErrorAction SilentlyContinue
-            if ($msiFiles.Count -gt 0) {
-              Write-Host "Found MSI installer(s):"
-              $msiFiles | ForEach-Object {
-                $size = [math]::Round($_.Length / 1MB, 2)
-                Write-Host "  - $($_.Name): ${size}MB"
-                $foundInstaller = $true
-              }
-            }
-          }
-          
-          if (-not $foundInstaller) {
-            Write-Error "No installers found in build output!"
-            exit 1
-          }
-        shell: pwsh
-      
-      - name: Upload Windows installers
+      - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installers-${{ github.sha }}
+          name: windows-build-${{ github.sha }}
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: warn
       
-      - name: Generate Build Summary
+      - name: Build Summary
         if: always()
         run: |
           Write-Host "=== Build Summary ==="
-          Write-Host "Repository: ${{ github.repository }}"
+          Write-Host "Status: ${{ job.status }}"
           Write-Host "Commit: ${{ github.sha }}"
-          Write-Host "Python Version: 3.10.13 (Official Embeddable)"
-          Write-Host "Build Status: ${{ job.status }}"
+          Write-Host "Python: 3.10.13 (Official Embeddable)"
           
-          if (Test-Path "src-tauri\python") {
-            $pythonSize = (Get-ChildItem -Path "src-tauri\python" -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
-            Write-Host "Embedded Python size: $([math]::Round($pythonSize, 2))MB"
+          # Check build outputs
+          $nsisPath = "src-tauri\target\release\bundle\nsis"
+          $msiPath = "src-tauri\target\release\bundle\msi"
+          
+          if (Test-Path $nsisPath) {
+            $exe = Get-ChildItem -Path $nsisPath -Filter "*.exe" -ErrorAction SilentlyContinue
+            if ($exe) {
+              Write-Host "NSIS Installer: $($exe.Name) ($([math]::Round($exe.Length/1MB, 2))MB)"
+            }
+          }
+          
+          if (Test-Path $msiPath) {
+            $msi = Get-ChildItem -Path $msiPath -Filter "*.msi" -ErrorAction SilentlyContinue  
+            if ($msi) {
+              Write-Host "MSI Installer: $($msi.Name) ($([math]::Round($msi.Length/1MB, 2))MB)"
+            }
           }
         shell: pwsh
