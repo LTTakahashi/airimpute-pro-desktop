@@ -50,6 +50,13 @@ jobs:
           # Extract Python
           Write-Host "`n=== Extracting Python ==="
           $pythonDir = "src-tauri\python"
+          
+          # Clean up any existing Python directory
+          if (Test-Path $pythonDir) {
+            Write-Host "Removing existing Python directory..."
+            Remove-Item -Path $pythonDir -Recurse -Force
+          }
+          
           New-Item -Path $pythonDir -ItemType Directory -Force | Out-Null
           
           try {
