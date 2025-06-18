@@ -148,16 +148,12 @@ jobs:
             Write-Host "pip.exe not found at expected location, trying python -m pip"
           }
           
-          # Now verify with python -m pip
-          & $pythonExe -m pip --version
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "pip module verification failed"
-            exit 1
-          }
+          # Skip python -m pip verification and use pip.exe directly
+          Write-Host "✓ Using pip.exe directly for package installation"
           
           Write-Host "`n=== Installing Scientific Packages ==="
           
-          # Install packages one by one with progress
+          # Install packages one by one with progress using pip.exe directly
           $packages = @(
             @{name="numpy"; version="1.26.4"},
             @{name="pandas"; version="2.2.0"},
@@ -169,7 +165,7 @@ jobs:
           
           foreach ($pkg in $packages) {
             Write-Host "`nInstalling $($pkg.name)==$($pkg.version)..."
-            & $pythonExe -m pip install "$($pkg.name)==$($pkg.version)" --no-warn-script-location
+            & $pipPath install "$($pkg.name)==$($pkg.version)" --no-warn-script-location
             if ($LASTEXITCODE -ne 0) {
               Write-Error "Failed to install $($pkg.name)"
               exit 1
@@ -179,7 +175,7 @@ jobs:
           
           # Show installed packages
           Write-Host "`n=== Installed Packages ==="
-          & $pythonExe -m pip list
+          & $pipPath list
           
           # Test imports
           Write-Host "`n=== Testing Package Imports ==="
@@ -189,7 +185,7 @@ jobs:
           
           # Clean up
           Remove-Item "get-pip.py" -Force
-          & $pythonExe -m pip cache purge
+          & $pipPath cache purge
           
           Write-Host "`n✓ Package installation complete"
         shell: pwsh
