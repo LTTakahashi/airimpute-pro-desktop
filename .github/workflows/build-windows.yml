@@ -119,17 +119,39 @@ jobs:
             exit 1
           }
           
-          # Install pip
+          # Install pip with specific target to ensure it's in the right location
+          $sitePackages = "src-tauri\python\Lib\site-packages"
+          New-Item -Path $sitePackages -ItemType Directory -Force | Out-Null
+          
           & $pythonExe get-pip.py --no-warn-script-location
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Failed to install pip"
             exit 1
           }
           
-          # Verify pip
+          # Add the Lib directory to sys.path by modifying the .pth file again
+          # This ensures pip and other packages are findable
+          $pthFile = Get-ChildItem -Path "src-tauri\python" -Filter "python*.pth" | Select-Object -First 1
+          if ($pthFile) {
+            $pthPath = $pthFile.FullName
+            Add-Content -Path $pthPath -Value "Lib"
+            Add-Content -Path $pthPath -Value "Lib\site-packages"
+            Write-Host "✓ Added Lib directories to Python path"
+          }
+          
+          # Verify pip with full path first to ensure it's installed
+          $pipPath = "src-tauri\python\Scripts\pip.exe"
+          if (Test-Path $pipPath) {
+            Write-Host "✓ pip.exe found at: $pipPath"
+            & $pipPath --version
+          } else {
+            Write-Host "pip.exe not found at expected location, trying python -m pip"
+          }
+          
+          # Now verify with python -m pip
           & $pythonExe -m pip --version
           if ($LASTEXITCODE -ne 0) {
-            Write-Error "pip verification failed"
+            Write-Error "pip module verification failed"
             exit 1
           }
           
