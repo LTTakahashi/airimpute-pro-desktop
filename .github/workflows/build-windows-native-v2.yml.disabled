@@ -1,0 +1,231 @@
+name: Build Windows Executable (Native v2)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+      version:
+        description: 'Version to build (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.10'
+  RUST_VERSION: '1.82.0'
+
+jobs:
+  build-windows:
+    name: Build Windows Executable
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup Miniforge for Python environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: 'latest'
+          miniforge-variant: Mambaforge
+          use-mamba: true
+          python-version: ${{ env.PYTHON_VERSION }}
+          channels: conda-forge,pytorch
+          channel-priority: strict
+          auto-activate-base: false
+          activate-environment: tauri-py-env
+
+      - name: Create conda environment from file
+        shell: bash -l {0}
+        run: |
+          # Create environment file with CPU-only packages
+          cat > environment.yml << 'EOF'
+          name: tauri-py-env
+          channels:
+            - conda-forge
+            - pytorch
+          dependencies:
+            - python=3.10
+            - pip
+            - numpy
+            - scipy
+            - pandas
+            - scikit-learn
+            - networkx
+            - pyarrow
+            - pytorch-cpu  # CPU-only version
+            - torchvision-cpu
+            - pip:
+              - tensorflow-cpu  # CPU-only version
+          EOF
+          
+          # Update the environment
+          mamba env update --name tauri-py-env --file environment.yml
+
+      - name: Prepare Python runtime for bundling
+        shell: pwsh
+        run: |
+          # Get the conda environment path
+          $condaEnv = "$env:CONDA_PREFIX"
+          Write-Host "Conda environment is at: $condaEnv"
+          
+          # Create the python-runtime directory
+          $dest = "python-runtime"
+          New-Item -ItemType Directory -Force -Path $dest
+          
+          # Copy the entire conda environment
+          Write-Host "Copying conda environment to $dest..."
+          Copy-Item -Path "$condaEnv\*" -Destination $dest -Recurse -Force
+          
+          # Copy project Python scripts
+          $scriptsDir = "$dest\app_scripts"
+          New-Item -ItemType Directory -Force -Path $scriptsDir
+          Copy-Item -Path "scripts\*" -Destination $scriptsDir -Recurse -Force
+          
+          # Create a marker file to verify bundling
+          "Python runtime bundled on $(Get-Date)" | Out-File -FilePath "$dest\BUNDLED.txt"
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-rust-${{ env.RUST_VERSION }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-${{ env.RUST_VERSION }}-
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Update Tauri configuration for bundling
+        shell: pwsh
+        run: |
+          # Read current tauri.conf.json
+          $config = Get-Content -Path "src-tauri\tauri.conf.json" | ConvertFrom-Json
+          
+          # Ensure bundle resources includes python-runtime
+          if (-not $config.tauri.bundle.resources) {
+            $config.tauri.bundle | Add-Member -NotePropertyName "resources" -NotePropertyValue @()
+          }
+          if ($config.tauri.bundle.resources -notcontains "python-runtime") {
+            $config.tauri.bundle.resources += "../python-runtime"
+          }
+          
+          # Configure WebView2
+          if (-not $config.tauri.bundle.windows) {
+            $config.tauri.bundle | Add-Member -NotePropertyName "windows" -NotePropertyValue @{}
+          }
+          $config.tauri.bundle.windows | Add-Member -NotePropertyName "webviewInstallMode" -NotePropertyValue @{
+            type = "embedBootstrapper"
+          } -Force
+          
+          # Save updated configuration
+          $config | ConvertTo-Json -Depth 10 | Set-Content -Path "src-tauri\tauri.conf.json"
+
+      - name: Build Tauri application
+        env:
+          TAURI_PRIVATE_KEY: ${{ (github.event.inputs.build_type == 'release' && secrets.TAURI_PRIVATE_KEY) || '' }}
+          TAURI_KEY_PASSWORD: ${{ (github.event.inputs.build_type == 'release' && secrets.TAURI_KEY_PASSWORD) || '' }}
+        shell: pwsh
+        run: |
+          $buildArgs = @()
+          if ("${{ github.event.inputs.build_type }}" -eq "debug") {
+            $buildArgs += "--debug"
+          }
+          
+          # Build with npm
+          & npm run tauri build -- @buildArgs
+
+      - name: Package build artifacts
+        shell: pwsh
+        run: |
+          $buildType = "${{ github.event.inputs.build_type }}"
+          $buildDir = "src-tauri\target\$buildType\bundle"
+          $outputDir = "dist\windows"
+          New-Item -ItemType Directory -Force -Path $outputDir
+          
+          # Find and copy NSIS installer
+          $nsisFiles = Get-ChildItem -Path "$buildDir\nsis\*.exe" -File -ErrorAction SilentlyContinue
+          if ($nsisFiles) {
+            $nsisInstaller = $nsisFiles | Select-Object -First 1
+            Write-Host "Found NSIS installer: $($nsisInstaller.FullName)"
+            Copy-Item $nsisInstaller.FullName -Destination "$outputDir\AirImputePro-Setup-${{ github.event.inputs.version }}.exe"
+          } else {
+            Write-Error "NSIS installer not found! Build may have failed."
+            exit 1
+          }
+
+          # Find and copy MSI installer (optional)
+          $msiFiles = Get-ChildItem -Path "$buildDir\msi\*.msi" -File -ErrorAction SilentlyContinue
+          if ($msiFiles) {
+            $msiInstaller = $msiFiles | Select-Object -First 1
+            Write-Host "Found MSI installer: $($msiInstaller.FullName)"
+            Copy-Item $msiInstaller.FullName -Destination "$outputDir\AirImputePro-${{ github.event.inputs.version }}.msi"
+          }
+          
+          # Create build info
+          @"
+## Build Information
+Version: ${{ github.event.inputs.version }}
+Build Type: ${{ github.event.inputs.build_type }}
+Build Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC' -AsUTC)
+Commit: ${{ github.sha }}
+Rust Version: $(rustc --version)
+Node Version: $(node --version)
+Python Version: ${{ env.PYTHON_VERSION }}
+Conda Packages: See conda-packages.txt
+"@ | Out-File -FilePath "$outputDir\build-info.txt" -Encoding UTF8
+          
+          # Export conda package list
+          & conda list --name tauri-py-env > "$outputDir\conda-packages.txt"
+
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          cd dist\windows
+          Get-ChildItem -File | Where-Object { $_.Extension -in ".exe", ".msi" } | ForEach-Object {
+            $hash = Get-FileHash -Path $_.FullName -Algorithm SHA256
+            "$($hash.Hash)  $($_.Name)"
+          } | Out-File -FilePath "checksums.txt" -Encoding UTF8
+          cd ..\..
+
+      - name: Estimate final package size
+        shell: pwsh
+        run: |
+          $installerSize = (Get-ChildItem -Path "dist\windows\*.exe" | Measure-Object -Property Length -Sum).Sum / 1MB
+          Write-Host "Installer size: $([math]::Round($installerSize, 2)) MB"
+          
+          if ($installerSize -gt 1000) {
+            Write-Warning "Installer is over 1GB! Consider optimizing Python dependencies."
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-${{ github.event.inputs.build_type }}-${{ github.event.inputs.version }}
+          path: dist/windows/
+          retention-days: 30

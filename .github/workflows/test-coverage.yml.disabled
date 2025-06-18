@@ -1,0 +1,342 @@
+name: Test Coverage Analysis
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  COVERAGE_THRESHOLD: 95
+
+jobs:
+  coverage:
+    name: Test Coverage - ${{ matrix.component }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [frontend, rust, python, integration]
+        
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Environment
+        uses: ./.github/actions/setup-build-env
+        with:
+          node-version: '18.19.0'
+          rust-version: '1.75.0'
+          python-version: '3.11'
+          
+      # ========================================
+      # Frontend Coverage
+      # ========================================
+      - name: Frontend Test Coverage
+        if: matrix.component == 'frontend'
+        run: |
+          npm ci
+          npm test -- --coverage --coverageReporters=json,lcov,text,clover
+          
+          # Generate coverage badge
+          npx coverage-badge-creator --output coverage/badge.svg
+          
+      # ========================================
+      # Rust Coverage
+      # ========================================
+      - name: Install Rust Coverage Tools
+        if: matrix.component == 'rust'
+        run: |
+          cargo install cargo-tarpaulin
+          rustup component add llvm-tools-preview
+          cargo install cargo-llvm-cov
+          
+      - name: Rust Test Coverage
+        if: matrix.component == 'rust'
+        run: |
+          cd src-tauri
+          
+          # Run tarpaulin for coverage
+          cargo tarpaulin --verbose --all-features --workspace --timeout 120 \
+            --out Xml --out Html --output-dir ../coverage/rust
+            
+          # Alternative: cargo-llvm-cov for more accurate coverage
+          cargo llvm-cov --all-features --workspace --html --output-dir ../coverage/rust-llvm
+          cargo llvm-cov --all-features --workspace --lcov --output-path ../coverage/rust.lcov
+          
+      # ========================================
+      # Python Coverage
+      # ========================================
+      - name: Python Test Coverage
+        if: matrix.component == 'python'
+        run: |
+          pip install pytest pytest-cov coverage
+          
+          # Run tests with coverage
+          pytest tests/ --cov=scripts --cov=tests \
+            --cov-report=xml:coverage/python.xml \
+            --cov-report=html:coverage/python-html \
+            --cov-report=term-missing \
+            --cov-report=lcov:coverage/python.lcov
+            
+          # Generate coverage report
+          coverage report --fail-under=${{ env.COVERAGE_THRESHOLD }}
+          
+      # ========================================
+      # Integration Test Coverage
+      # ========================================
+      - name: Integration Test Coverage
+        if: matrix.component == 'integration'
+        run: |
+          # Build the application
+          npm ci
+          npm run build
+          
+          # Install integration test dependencies
+          npm install -D @playwright/test nyc
+          
+          # Run integration tests with coverage
+          npx nyc --reporter=lcov --reporter=text \
+            npm run test:integration
+            
+      # ========================================
+      # Merge Coverage Reports
+      # ========================================
+      - name: Merge Coverage Reports
+        if: always()
+        run: |
+          mkdir -p coverage/merged
+          
+          # Install coverage merger
+          npm install -g lcov-result-merger
+          
+          # Find all lcov files and merge them
+          find coverage -name "*.lcov" -type f > lcov-files.txt
+          
+          if [ -s lcov-files.txt ]; then
+            lcov-result-merger $(cat lcov-files.txt) coverage/merged/coverage.lcov
+          fi
+          
+      # ========================================
+      # Coverage Analysis
+      # ========================================
+      - name: Analyze Coverage
+        if: always()
+        run: |
+          # Create coverage summary
+          cat > coverage/summary.json << EOF
+          {
+            "component": "${{ matrix.component }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "threshold": ${{ env.COVERAGE_THRESHOLD }}
+          }
+          EOF
+          
+          # Generate detailed report
+          python3 << 'PYTHON'
+          import json
+          import xml.etree.ElementTree as ET
+          import glob
+          
+          def parse_coverage_xml(xml_file):
+              tree = ET.parse(xml_file)
+              root = tree.getroot()
+              
+              lines_covered = 0
+              lines_total = 0
+              
+              for package in root.findall('.//package'):
+                  for class_elem in package.findall('.//class'):
+                      for line in class_elem.findall('.//line'):
+                          lines_total += 1
+                          if int(line.get('hits', 0)) > 0:
+                              lines_covered += 1
+              
+              return lines_covered, lines_total
+          
+          # Find all coverage XML files
+          coverage_files = glob.glob('coverage/**/*.xml', recursive=True)
+          
+          total_covered = 0
+          total_lines = 0
+          
+          for cov_file in coverage_files:
+              try:
+                  covered, total = parse_coverage_xml(cov_file)
+                  total_covered += covered
+                  total_lines += total
+                  print(f"Processed {cov_file}: {covered}/{total} lines")
+              except Exception as e:
+                  print(f"Error processing {cov_file}: {e}")
+          
+          if total_lines > 0:
+              coverage_percent = (total_covered / total_lines) * 100
+              print(f"\nTotal Coverage: {coverage_percent:.2f}% ({total_covered}/{total_lines} lines)")
+              
+              # Update summary
+              with open('coverage/summary.json', 'r') as f:
+                  summary = json.load(f)
+              
+              summary['coverage_percentage'] = round(coverage_percent, 2)
+              summary['lines_covered'] = total_covered
+              summary['lines_total'] = total_lines
+              summary['passed'] = coverage_percent >= ${{ env.COVERAGE_THRESHOLD }}
+              
+              with open('coverage/summary.json', 'w') as f:
+                  json.dump(summary, f, indent=2)
+          PYTHON
+          
+      # ========================================
+      # Upload Coverage Reports
+      # ========================================
+      - name: Upload Coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage/merged/coverage.lcov
+          flags: ${{ matrix.component }}
+          name: ${{ matrix.component }}-coverage
+          fail_ci_if_error: false
+          
+      - name: Upload Coverage Artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-${{ matrix.component }}
+          path: coverage/
+          
+      # ========================================
+      # Coverage Enforcement
+      # ========================================
+      - name: Check Coverage Threshold
+        if: always()
+        run: |
+          if [ -f coverage/summary.json ]; then
+            passed=$(jq -r '.passed' coverage/summary.json)
+            coverage=$(jq -r '.coverage_percentage' coverage/summary.json)
+            
+            if [ "$passed" != "true" ]; then
+              echo "❌ Coverage ${coverage}% is below threshold of ${{ env.COVERAGE_THRESHOLD }}%"
+              exit 1
+            else
+              echo "✅ Coverage ${coverage}% meets threshold of ${{ env.COVERAGE_THRESHOLD }}%"
+            fi
+          fi
+          
+  # ========================================
+  # Combined Coverage Report
+  # ========================================
+  combined-coverage:
+    name: Combined Coverage Report
+    needs: coverage
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
+      - name: Download All Coverage Reports
+        uses: actions/download-artifact@v3
+        with:
+          path: all-coverage/
+          
+      - name: Generate Combined Report
+        run: |
+          # Install dependencies
+          npm install -g lcov-result-merger
+          pip install coverage-badge
+          
+          # Merge all LCOV files
+          find all-coverage -name "*.lcov" -type f | xargs lcov-result-merger > combined-coverage.lcov
+          
+          # Generate combined report
+          mkdir -p combined-coverage
+          
+          # Calculate overall coverage
+          python3 << 'PYTHON'
+          import json
+          import glob
+          
+          summaries = glob.glob('all-coverage/**/summary.json', recursive=True)
+          
+          total_covered = 0
+          total_lines = 0
+          components = {}
+          
+          for summary_file in summaries:
+              with open(summary_file, 'r') as f:
+                  data = json.load(f)
+                  if 'lines_covered' in data and 'lines_total' in data:
+                      total_covered += data['lines_covered']
+                      total_lines += data['lines_total']
+                      components[data['component']] = {
+                          'coverage': data.get('coverage_percentage', 0),
+                          'lines_covered': data['lines_covered'],
+                          'lines_total': data['lines_total']
+                      }
+          
+          overall_coverage = (total_covered / total_lines * 100) if total_lines > 0 else 0
+          
+          report = {
+              'overall_coverage': round(overall_coverage, 2),
+              'total_lines_covered': total_covered,
+              'total_lines': total_lines,
+              'components': components,
+              'meets_threshold': overall_coverage >= ${{ env.COVERAGE_THRESHOLD }}
+          }
+          
+          with open('combined-coverage/report.json', 'w') as f:
+              json.dump(report, f, indent=2)
+              
+          # Generate markdown report
+          with open('combined-coverage/COVERAGE.md', 'w') as f:
+              f.write(f"# Test Coverage Report\n\n")
+              f.write(f"**Overall Coverage**: {overall_coverage:.2f}%\n")
+              f.write(f"**Lines Covered**: {total_covered:,} / {total_lines:,}\n")
+              f.write(f"**Threshold**: ${{ env.COVERAGE_THRESHOLD }}%\n")
+              f.write(f"**Status**: {'✅ PASSING' if report['meets_threshold'] else '❌ FAILING'}\n\n")
+              
+              f.write("## Component Breakdown\n\n")
+              f.write("| Component | Coverage | Lines Covered | Total Lines |\n")
+              f.write("|-----------|----------|---------------|-------------|\n")
+              
+              for comp, data in components.items():
+                  f.write(f"| {comp} | {data['coverage']:.2f}% | {data['lines_covered']:,} | {data['lines_total']:,} |\n")
+          PYTHON
+          
+          # Generate coverage badge
+          overall=$(jq -r '.overall_coverage' combined-coverage/report.json)
+          color="red"
+          if (( $(echo "$overall >= 90" | bc -l) )); then color="brightgreen"
+          elif (( $(echo "$overall >= 80" | bc -l) )); then color="green"
+          elif (( $(echo "$overall >= 70" | bc -l) )); then color="yellow"
+          elif (( $(echo "$overall >= 60" | bc -l) )); then color="orange"
+          fi
+          
+          curl -s "https://img.shields.io/badge/coverage-${overall}%25-${color}" > combined-coverage/badge.svg
+          
+      - name: Upload Combined Coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: combined-coverage-report
+          path: combined-coverage/
+          
+      - name: Comment PR with Coverage
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const coverage = JSON.parse(fs.readFileSync('combined-coverage/report.json', 'utf8'));
+            const markdown = fs.readFileSync('combined-coverage/COVERAGE.md', 'utf8');
+            
+            const comment = `## 📊 Test Coverage Report\n\n${markdown}\n\n---\n*Coverage report for commit ${context.sha.substring(0, 7)}*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

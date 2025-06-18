@@ -1,0 +1,185 @@
+name: Build Windows with Tauri Action
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+          - release
+          - debug
+
+jobs:
+  build-windows:
+    name: Build Windows Executable
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      # Set up Python environment with conda
+      - name: Setup Miniforge
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          miniforge-variant: Mambaforge
+          activate-environment: tauri-python
+          python-version: '3.10'
+          channels: conda-forge,pytorch
+          channel-priority: strict
+
+      - name: Cache conda packages
+        uses: actions/cache@v4
+        with:
+          path: ~/conda_pkgs_dir
+          key: ${{ runner.os }}-conda-${{ hashFiles('environment.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-conda-
+
+      - name: Create Python environment
+        shell: bash -el {0}
+        run: |
+          # Create environment file if it doesn't exist
+          if [ ! -f environment.yml ]; then
+            cat > environment.yml << 'EOF'
+          name: tauri-python
+          channels:
+            - conda-forge
+            - pytorch
+          dependencies:
+            - python=3.10
+            - pip
+            - numpy
+            - scipy
+            - pandas
+            - scikit-learn
+            - networkx
+            - pyarrow
+            - cpuonly
+            - pytorch
+            - torchvision
+            - pip:
+              - tensorflow-cpu
+          EOF
+          fi
+          
+          # Update environment
+          mamba env update --file environment.yml --prune
+
+      - name: Prepare Python runtime for bundling
+        shell: pwsh
+        run: |
+          # Find the conda environment path
+          $condaPath = conda info --envs | Select-String "tauri-python" | ForEach-Object { $_.Line.Split()[1] }
+          Write-Host "Conda environment at: $condaPath"
+          
+          # Copy to project directory for bundling
+          $dest = "src-tauri\python-runtime"
+          if (Test-Path $dest) {
+            Remove-Item -Path $dest -Recurse -Force
+          }
+          
+          Write-Host "Copying Python environment to $dest"
+          Copy-Item -Path $condaPath -Destination $dest -Recurse
+          
+          # Copy project Python scripts
+          $scriptsSource = "scripts"
+          if (Test-Path $scriptsSource) {
+            $scriptsDest = "$dest\app_scripts"
+            New-Item -ItemType Directory -Force -Path $scriptsDest | Out-Null
+            Copy-Item -Path "$scriptsSource\*" -Destination $scriptsDest -Recurse
+          }
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Update tauri.conf.json
+        shell: pwsh
+        run: |
+          $configPath = "src-tauri\tauri.conf.json"
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json
+          
+          # Ensure bundle object exists
+          if (-not $config.tauri.bundle) {
+            $config.tauri | Add-Member -NotePropertyName "bundle" -NotePropertyValue @{} -Force
+          }
+          
+          # Add python-runtime to resources
+          if (-not $config.tauri.bundle.resources) {
+            $config.tauri.bundle | Add-Member -NotePropertyName "resources" -NotePropertyValue @() -Force
+          }
+          
+          $resources = @($config.tauri.bundle.resources)
+          if ($resources -notcontains "python-runtime") {
+            $resources += "python-runtime"
+            $config.tauri.bundle.resources = $resources
+          }
+          
+          # Configure WebView2
+          if (-not $config.tauri.bundle.windows) {
+            $config.tauri.bundle | Add-Member -NotePropertyName "windows" -NotePropertyValue @{} -Force
+          }
+          $config.tauri.bundle.windows | Add-Member -NotePropertyName "webviewInstallMode" -NotePropertyValue @{
+            type = "embedBootstrapper"
+          } -Force
+          
+          # Enable NSIS and MSI
+          $config.tauri.bundle | Add-Member -NotePropertyName "active" -NotePropertyValue $true -Force
+          $config.tauri.bundle | Add-Member -NotePropertyName "targets" -NotePropertyValue @("nsis", "msi") -Force
+          
+          # Save the updated config
+          $config | ConvertTo-Json -Depth 100 | Set-Content $configPath
+
+      # Use the official Tauri action
+      - name: Build Tauri App
+        uses: tauri-apps/tauri-action@v0
+        id: tauri_build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          tagName: v${{ github.event.inputs.version }}
+          releaseName: 'AirImpute Pro v${{ github.event.inputs.version }}'
+          releaseBody: 'Windows build of AirImpute Pro'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ github.event.inputs.build_type == 'debug' && '--debug' || '' }}
+
+      # The Tauri action handles artifact upload automatically
+      # But we can add additional artifacts if needed
+      - name: Upload additional build info
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-info-${{ github.event.inputs.version }}
+          path: |
+            src-tauri/tauri.conf.json
+            environment.yml
+          retention-days: 30
+
+      - name: Display build summary
+        shell: pwsh
+        run: |
+          Write-Host "Build completed successfully!"
+          Write-Host "Version: ${{ github.event.inputs.version }}"
+          Write-Host "Type: ${{ github.event.inputs.build_type }}"
+          Write-Host "Artifacts have been uploaded to the GitHub release draft"

@@ -1,0 +1,269 @@
+name: Automated Dependency Updates
+
+on:
+  schedule:
+    # Run every Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  update-dependencies:
+    name: Update Dependencies
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Environment
+        uses: ./.github/actions/setup-build-env
+        with:
+          node-version: '18.19.0'
+          rust-version: '1.75.0'
+          python-version: '3.11'
+          
+      # ========================================
+      # Frontend Dependencies (npm)
+      # ========================================
+      - name: Update NPM Dependencies
+        id: npm-update
+        run: |
+          # Check for outdated packages
+          npm outdated --json > npm-outdated.json || true
+          
+          # Update dependencies
+          npx npm-check-updates -u --target minor
+          npm install
+          npm audit fix
+          
+          # Test the updates
+          npm test -- --run
+          npm run build:frontend
+          
+          # Check if there are changes
+          if [[ -n $(git status -s package*.json) ]]; then
+            echo "npm_updated=true" >> $GITHUB_OUTPUT
+          else
+            echo "npm_updated=false" >> $GITHUB_OUTPUT
+          fi
+          
+      # ========================================
+      # Rust Dependencies (Cargo)
+      # ========================================
+      - name: Update Rust Dependencies
+        id: cargo-update
+        run: |
+          cd src-tauri
+          
+          # Install cargo-edit for easier updates
+          cargo install cargo-edit
+          
+          # Check for outdated packages
+          cargo outdated --format json > ../cargo-outdated.json || true
+          
+          # Update dependencies (only compatible versions)
+          cargo update
+          
+          # Test the updates
+          cargo test
+          cargo build --release
+          
+          # Check if there are changes
+          if [[ -n $(git status -s Cargo.lock) ]]; then
+            echo "cargo_updated=true" >> $GITHUB_OUTPUT
+          else
+            echo "cargo_updated=false" >> $GITHUB_OUTPUT
+          fi
+          
+      # ========================================
+      # Python Dependencies
+      # ========================================
+      - name: Update Python Dependencies
+        id: python-update
+        run: |
+          # Install pip-tools for better dependency management
+          pip install pip-tools
+          
+          # Create requirements.in from current requirements
+          cp requirements.txt requirements.in
+          
+          # Compile new requirements with latest compatible versions
+          pip-compile requirements.in --upgrade --generate-hashes -o requirements.txt
+          
+          # Do the same for dev requirements
+          cp requirements-dev.txt requirements-dev.in
+          pip-compile requirements-dev.in --upgrade --generate-hashes -o requirements-dev.txt
+          
+          # Test the updates
+          pip install -r requirements.txt -r requirements-dev.txt
+          pytest tests/ -v
+          
+          # Check if there are changes
+          if [[ -n $(git status -s requirements*.txt) ]]; then
+            echo "python_updated=true" >> $GITHUB_OUTPUT
+          else
+            echo "python_updated=false" >> $GITHUB_OUTPUT
+          fi
+          
+      # ========================================
+      # Security Audit After Updates
+      # ========================================
+      - name: Security Audit
+        if: |
+          steps.npm-update.outputs.npm_updated == 'true' ||
+          steps.cargo-update.outputs.cargo_updated == 'true' ||
+          steps.python-update.outputs.python_updated == 'true'
+        run: |
+          # Run security audits
+          npm audit
+          cd src-tauri && cargo audit
+          safety check
+          
+      # ========================================
+      # Create Pull Request
+      # ========================================
+      - name: Create Pull Request
+        if: |
+          steps.npm-update.outputs.npm_updated == 'true' ||
+          steps.cargo-update.outputs.cargo_updated == 'true' ||
+          steps.python-update.outputs.python_updated == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            chore: automated dependency updates
+            
+            - Updated npm dependencies
+            - Updated Cargo dependencies  
+            - Updated Python dependencies
+            
+            All tests passing. Security audits completed.
+          branch: automated/dependency-updates-${{ github.run_id }}
+          delete-branch: true
+          title: 'chore: Automated Dependency Updates'
+          body: |
+            ## Automated Dependency Updates
+            
+            This PR contains automated dependency updates generated on ${{ github.event.schedule || 'manual trigger' }}.
+            
+            ### Updates Summary
+            
+            #### NPM Dependencies
+            ${{ steps.npm-update.outputs.npm_updated == 'true' && '✅ Updated' || '⏭️ No updates needed' }}
+            
+            #### Rust Dependencies  
+            ${{ steps.cargo-update.outputs.cargo_updated == 'true' && '✅ Updated' || '⏭️ No updates needed' }}
+            
+            #### Python Dependencies
+            ${{ steps.python-update.outputs.python_updated == 'true' && '✅ Updated' || '⏭️ No updates needed' }}
+            
+            ### Validation
+            
+            - ✅ All tests passing
+            - ✅ Security audits completed
+            - ✅ Build successful
+            
+            ### Review Checklist
+            
+            - [ ] Review dependency changes for breaking updates
+            - [ ] Verify no major version bumps without approval
+            - [ ] Check security audit results
+            - [ ] Confirm all tests pass
+            - [ ] Review any deprecation warnings
+            
+            ### Outdated Packages Report
+            
+            <details>
+            <summary>NPM Outdated Packages</summary>
+            
+            ```json
+            $(cat npm-outdated.json 2>/dev/null || echo "No outdated packages")
+            ```
+            </details>
+            
+            <details>
+            <summary>Cargo Outdated Packages</summary>
+            
+            ```json
+            $(cat cargo-outdated.json 2>/dev/null || echo "No outdated packages")
+            ```
+            </details>
+            
+            ---
+            *This PR was automatically generated by the dependency update workflow.*
+          labels: |
+            dependencies
+            automated
+          reviewers: |
+            takahashi
+            
+      # ========================================
+      # Dependabot Configuration Check
+      # ========================================
+      - name: Update Dependabot Config
+        run: |
+          mkdir -p .github
+          cat > .github/dependabot.yml << 'EOF'
+          version: 2
+          updates:
+            # NPM dependencies
+            - package-ecosystem: "npm"
+              directory: "/"
+              schedule:
+                interval: "weekly"
+                day: "sunday"
+              open-pull-requests-limit: 5
+              groups:
+                dev-dependencies:
+                  patterns:
+                    - "@types/*"
+                    - "eslint*"
+                    - "prettier*"
+                    - "vitest*"
+                    - "typescript"
+                ui-dependencies:
+                  patterns:
+                    - "@radix-ui/*"
+                    - "tailwind*"
+                    - "framer-motion"
+              
+            # Rust dependencies
+            - package-ecosystem: "cargo"
+              directory: "/src-tauri"
+              schedule:
+                interval: "weekly"
+                day: "sunday"
+              open-pull-requests-limit: 5
+              
+            # GitHub Actions
+            - package-ecosystem: "github-actions"
+              directory: "/"
+              schedule:
+                interval: "weekly"
+                day: "sunday"
+              open-pull-requests-limit: 5
+              
+            # Python dependencies
+            - package-ecosystem: "pip"
+              directory: "/"
+              schedule:
+                interval: "weekly"
+                day: "sunday"
+              open-pull-requests-limit: 5
+          EOF
+          
+      - name: Commit Dependabot Config
+        if: |
+          steps.npm-update.outputs.npm_updated == 'true' ||
+          steps.cargo-update.outputs.cargo_updated == 'true' ||
+          steps.python-update.outputs.python_updated == 'true'
+        run: |
+          git add .github/dependabot.yml
+          git diff --staged --quiet || git commit -m "chore: update dependabot configuration"
