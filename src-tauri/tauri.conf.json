@@ -104,20 +104,6 @@
         "certificateThumbprint": null,
         "digestAlgorithm": "sha256",
         "timestampUrl": "https://timestamp.digicert.com",
-        "wix": {
-          "language": "en-US",
-          "template": null,
-          "fragmentPaths": [],
-          "componentGroupRefs": [],
-          "componentRefs": [],
-          "featureGroupRefs": [],
-          "featureRefs": [],
-          "mergeRefs": [],
-          "skipWebviewInstall": false,
-          "license": null,
-          "bannerPath": null,
-          "dialogImagePath": null
-        },
         "nsis": {
           "license": null,
           "headerImage": null,
