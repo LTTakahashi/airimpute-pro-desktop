@@ -20,10 +20,7 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    # Grant additional permissions for artifact upload
-    permissions:
-      contents: read
-      actions: write  # Required for artifact upload
+    # Job inherits 'contents: read' from top-level permissions
     
     steps:
       - name: Checkout repository
