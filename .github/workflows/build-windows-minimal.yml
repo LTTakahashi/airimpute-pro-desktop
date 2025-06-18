@@ -1,0 +1,13 @@
+name: Build Windows Minimal
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  simple_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: A single step
+        run: echo "Workflow is visible and running."
