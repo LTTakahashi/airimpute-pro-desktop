@@ -18,6 +18,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+      
       - name: Download Official Python Embeddable Package
         run: |
           # Skip setup-python and go directly to official embeddable package
@@ -237,12 +243,29 @@ jobs:
           Write-Host "`n✓ PyO3 environment configured"
         shell: pwsh
       
+      - name: Install Node.js dependencies
+        run: |
+          Write-Host "=== Installing Node.js dependencies ==="
+          npm ci
+          Write-Host "✓ Dependencies installed"
+        shell: pwsh
+      
+      - name: Build Frontend
+        run: |
+          Write-Host "=== Building Frontend ==="
+          npm run build:frontend
+          Write-Host "✓ Frontend built"
+        shell: pwsh
+      
       - name: Build Tauri Application
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          # Use npm script instead of direct tauri command
+          buildCommand: npm run tauri:build
       
       - name: Upload Build Artifacts
         if: success()
