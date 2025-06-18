@@ -255,6 +255,12 @@ jobs:
             npm install @rollup/rollup-win32-x64-msvc --save-optional
           }
           
+          # Explicitly install the missing Tauri CLI Windows module
+          if (-not (Test-Path "node_modules/@tauri-apps/cli-win32-x64-msvc")) {
+            Write-Host "Installing missing Tauri CLI Windows module..."
+            npm install @tauri-apps/cli-win32-x64-msvc --save-optional
+          }
+          
           Write-Host "✓ Dependencies installed"
         shell: pwsh
       
@@ -272,8 +278,8 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          # Use npm script instead of direct tauri command
-          buildCommand: npm run tauri:build
+          # Configure tauri script to use our npm script
+          tauriScript: npm run tauri
       
       - name: Upload Build Artifacts
         if: success()
