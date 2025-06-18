@@ -21,7 +21,8 @@ jobs:
       - name: Download Official Python Embeddable Package
         run: |
           # Skip setup-python and go directly to official embeddable package
-          $pythonVersion = "3.10.13"
+          # Using 3.10.11 as 3.10.13 embeddable package is not available on Python.org
+          $pythonVersion = "3.10.11"
           $pythonUrl = "https://www.python.org/ftp/python/${pythonVersion}/python-${pythonVersion}-embed-amd64.zip"
           
           Write-Host "=== Downloading Python $pythonVersion Embeddable Package ==="
@@ -223,7 +224,7 @@ jobs:
           Write-Host "=== Build Summary ==="
           Write-Host "Status: ${{ job.status }}"
           Write-Host "Commit: ${{ github.sha }}"
-          Write-Host "Python: 3.10.13 (Official Embeddable)"
+          Write-Host "Python: 3.10.11 (Official Embeddable)"
           
           # Check build outputs
           $nsisPath = "src-tauri\target\release\bundle\nsis"
