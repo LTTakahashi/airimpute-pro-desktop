@@ -246,7 +246,15 @@ jobs:
       - name: Install Node.js dependencies
         run: |
           Write-Host "=== Installing Node.js dependencies ==="
-          npm ci
+          # Force install with optional dependencies for Windows
+          npm ci --include=optional
+          
+          # Explicitly install the missing rollup dependency if needed
+          if (-not (Test-Path "node_modules/@rollup/rollup-win32-x64-msvc")) {
+            Write-Host "Installing missing rollup Windows module..."
+            npm install @rollup/rollup-win32-x64-msvc --save-optional
+          }
+          
           Write-Host "✓ Dependencies installed"
         shell: pwsh
       
