@@ -83,19 +83,40 @@ jobs:
             exit 1
           }
           
-          # Enable site packages (required for pip)
+          # Configure embedded Python for proper module discovery
           Write-Host "`n=== Configuring Embedded Python ==="
-          $pthFile = Get-ChildItem -Path $pythonDir -Filter "python*.pth" | Select-Object -First 1
+          $pthFile = Get-ChildItem -Path $pythonDir -Filter "python*._pth" -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($pthFile) {
             $pthPath = $pthFile.FullName
-            $content = Get-Content $pthPath
-            $newContent = $content -replace '^#import site', 'import site'
-            if ($content -ne $newContent) {
-              Set-Content -Path $pthPath -Value $newContent
-              Write-Host "✓ Enabled site packages in $($pthFile.Name)"
-            }
+            Write-Host "Found .pth file: $($pthFile.Name)"
+            
+            # Create a new .pth file with proper paths
+            $pthContent = @(
+              "python310.zip",
+              ".",
+              "Lib",
+              "Lib\site-packages",
+              "import site"
+            )
+            
+            Set-Content -Path $pthPath -Value $pthContent
+            Write-Host "✓ Configured Python paths in $($pthFile.Name)"
+            
+            # Display the content for debugging
+            Write-Host "Python path configuration:"
+            Get-Content $pthPath | ForEach-Object { Write-Host "  $_" }
           } else {
-            Write-Warning "No .pth file found - site packages may not work correctly"
+            Write-Warning "No ._pth file found - creating python310._pth"
+            $pthPath = Join-Path $pythonDir "python310._pth"
+            $pthContent = @(
+              "python310.zip",
+              ".",
+              "Lib",
+              "Lib\site-packages", 
+              "import site"
+            )
+            Set-Content -Path $pthPath -Value $pthContent
+            Write-Host "✓ Created python310._pth with proper configuration"
           }
           
           # Clean up
@@ -129,15 +150,6 @@ jobs:
             exit 1
           }
           
-          # Add the Lib directory to sys.path by modifying the .pth file again
-          # This ensures pip and other packages are findable
-          $pthFile = Get-ChildItem -Path "src-tauri\python" -Filter "python*.pth" | Select-Object -First 1
-          if ($pthFile) {
-            $pthPath = $pthFile.FullName
-            Add-Content -Path $pthPath -Value "Lib"
-            Add-Content -Path $pthPath -Value "Lib\site-packages"
-            Write-Host "✓ Added Lib directories to Python path"
-          }
           
           # Verify pip with full path first to ensure it's installed
           $pipPath = "src-tauri\python\Scripts\pip.exe"
