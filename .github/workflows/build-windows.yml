@@ -27,37 +27,82 @@ jobs:
       - name: Download Embedded Python
         run: |
           $pythonVersion = "3.10.13"
-          $pythonUrl = "https://github.com/indygreg/python-build-standalone/releases/download/20240107/cpython-${pythonVersion}+20240107-x86_64-pc-windows-msvc-install_only.tar.gz"
+          $releaseTag = "20240107"
+          $pythonFilename = "cpython-${pythonVersion}+${releaseTag}-x86_64-pc-windows-msvc-shared-install_only.zip"
+          $pythonUrl = "https://github.com/indygreg/python-build-standalone/releases/download/${releaseTag}/${pythonFilename}"
           
-          Write-Host "Downloading Python $pythonVersion..."
-          Invoke-WebRequest -Uri $pythonUrl -OutFile "python-embedded.tar.gz" -UseBasicParsing
+          Write-Host "Downloading Python $pythonVersion (shared build)..."
+          Write-Host "URL: $pythonUrl"
+          
+          # Download with retry logic
+          $maxRetries = 3
+          $retryCount = 0
+          while ($retryCount -lt $maxRetries) {
+            try {
+              Invoke-WebRequest -Uri $pythonUrl -OutFile "python-embedded.zip" -UseBasicParsing
+              Write-Host "Download successful"
+              break
+            } catch {
+              $retryCount++
+              if ($retryCount -eq $maxRetries) {
+                throw "Failed to download Python after $maxRetries attempts: $_"
+              }
+              Write-Host "Download failed, retrying in 5 seconds... (attempt $retryCount/$maxRetries)"
+              Start-Sleep -Seconds 5
+            }
+          }
           
           Write-Host "Extracting to src-tauri/python..."
           cd src-tauri
-          tar -xzf "../python-embedded.tar.gz"
+          Expand-Archive -Path "../python-embedded.zip" -DestinationPath "." -Force
           
-          if (Test-Path "python/install") {
-            Get-ChildItem "python/install" | Move-Item -Destination "python" -Force
-            Remove-Item "python/install" -Recurse -Force
+          # The zip extracts to a python/ directory
+          if (Test-Path "python/python.exe") {
+            Write-Host "Python extracted successfully"
+            & ".\python\python.exe" --version
+          } else {
+            Write-Error "Python executable not found after extraction"
+            exit 1
           }
-          
-          Write-Host "Python extracted successfully"
-          & ".\python\python.exe" --version
         shell: pwsh
       
-      - name: Install Python packages
+      - name: Setup Python Environment
         run: |
           cd src-tauri
           $pythonExe = ".\python\python.exe"
           
           Write-Host "Setting up pip..."
           & $pythonExe -m ensurepip --upgrade
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to setup pip"
+            exit 1
+          }
+          
           & $pythonExe -m pip install --upgrade pip setuptools wheel
           
-          Write-Host "Installing essential packages..."
-          & $pythonExe -m pip install numpy==1.26.4 pandas==2.2.0 scikit-learn==1.4.0 scipy==1.12.0 pyarrow==15.0.0 joblib==1.3.2 --no-warn-script-location
+          Write-Host "Installing essential scientific packages..."
+          $packages = @(
+            "numpy==1.26.4",
+            "pandas==2.2.0", 
+            "scikit-learn==1.4.0",
+            "scipy==1.12.0",
+            "pyarrow==15.0.0",
+            "joblib==1.3.2"
+          )
           
-          Write-Host "Note: Large ML libraries will be downloaded on first use"
+          foreach ($package in $packages) {
+            Write-Host "Installing $package..."
+            & $pythonExe -m pip install $package --no-warn-script-location
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Failed to install $package"
+              exit 1
+            }
+          }
+          
+          Write-Host "Python packages installed successfully"
+          & $pythonExe -m pip list
+          
+          # Clean up cache to reduce size
           & $pythonExe -m pip cache purge
         shell: pwsh
       
@@ -65,8 +110,49 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Set Python paths for PyO3
           PYO3_PYTHON: ${{ github.workspace }}\src-tauri\python\python.exe
           PYTHONHOME: ${{ github.workspace }}\src-tauri\python
+          # Add Python DLLs to PATH for runtime
+          PATH: ${{ github.workspace }}\src-tauri\python;${{ github.workspace }}\src-tauri\python\Scripts;${{ env.PATH }}
+      
+      - name: Verify Build Output
+        run: |
+          Write-Host "=== Build Output Verification ==="
+          
+          $nsisPath = "src-tauri\target\release\bundle\nsis"
+          $msiPath = "src-tauri\target\release\bundle\msi"
+          
+          if (Test-Path $nsisPath) {
+            $exeFiles = Get-ChildItem -Path $nsisPath -Filter "*.exe"
+            if ($exeFiles.Count -gt 0) {
+              Write-Host "Found NSIS installer(s):"
+              $exeFiles | ForEach-Object {
+                $size = [math]::Round($_.Length / 1MB, 2)
+                Write-Host "  - $($_.Name): ${size}MB"
+              }
+            } else {
+              Write-Warning "No .exe files found in NSIS output"
+            }
+          } else {
+            Write-Warning "NSIS output directory not found"
+          }
+          
+          if (Test-Path $msiPath) {
+            $msiFiles = Get-ChildItem -Path $msiPath -Filter "*.msi"
+            if ($msiFiles.Count -gt 0) {
+              Write-Host "Found MSI installer(s):"
+              $msiFiles | ForEach-Object {
+                $size = [math]::Round($_.Length / 1MB, 2)
+                Write-Host "  - $($_.Name): ${size}MB"
+              }
+            } else {
+              Write-Warning "No .msi files found in MSI output"
+            }
+          } else {
+            Write-Warning "MSI output directory not found"
+          }
+        shell: pwsh
       
       - name: Upload Windows installers
         uses: actions/upload-artifact@v4
@@ -77,3 +163,18 @@ jobs:
             src-tauri/target/release/bundle/msi/*.msi
           retention-days: 7
           if-no-files-found: error
+      
+      - name: Generate Build Report
+        if: always()
+        run: |
+          Write-Host "=== Build Report ==="
+          Write-Host "Repository: ${{ github.repository }}"
+          Write-Host "Commit: ${{ github.sha }}"
+          Write-Host "Build Time: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+          
+          # Check Python embedding
+          if (Test-Path "src-tauri\python\python.exe") {
+            $pythonSize = (Get-ChildItem -Path "src-tauri\python" -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
+            Write-Host "Embedded Python size: $([math]::Round($pythonSize, 2))MB"
+          }
+        shell: pwsh
