@@ -1,124 +1,75 @@
-name: Build Windows
-# Version 1.1 - Force re-index
+name: Build Windows Native
 
 on:
   push:
     branches:
       - main
       - master
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
   workflow_dispatch:
 
-# Security: Restrict permissions by default
 permissions:
   contents: read
 
 jobs:
   build-windows:
     runs-on: windows-latest
-    # Job inherits 'contents: read' from top-level permissions
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+        uses: actions/checkout@v4
       
-      # Setup Python for PyO3 build requirements
-      - name: Setup Build Python
-        uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           architecture: 'x64'
       
-      # Download proper embeddable Python from python-build-standalone
-      - name: Setup Embedded Python
+      - name: Download Embedded Python
         run: |
-          # Download python-build-standalone for Windows
           $pythonVersion = "3.10.13"
           $pythonUrl = "https://github.com/indygreg/python-build-standalone/releases/download/20240107/cpython-${pythonVersion}+20240107-x86_64-pc-windows-msvc-install_only.tar.gz"
-          $downloadPath = "python-embedded.tar.gz"
           
-          Write-Host "Downloading standalone Python $pythonVersion..."
-          Invoke-WebRequest -Uri $pythonUrl -OutFile $downloadPath -UseBasicParsing
+          Write-Host "Downloading Python $pythonVersion..."
+          Invoke-WebRequest -Uri $pythonUrl -OutFile "python-embedded.tar.gz" -UseBasicParsing
           
           Write-Host "Extracting to src-tauri/python..."
           cd src-tauri
-          tar -xzf "../$downloadPath"
+          tar -xzf "../python-embedded.tar.gz"
           
-          # Ensure it's in the expected location
           if (Test-Path "python/install") {
-            # Move contents up one level
             Get-ChildItem "python/install" | Move-Item -Destination "python" -Force
             Remove-Item "python/install" -Recurse -Force
           }
           
           Write-Host "Python extracted successfully"
-          
-          # Verify Python works
           & ".\python\python.exe" --version
         shell: pwsh
       
-      # Install minimal scientific packages in embedded Python
       - name: Install Python packages
         run: |
           cd src-tauri
           $pythonExe = ".\python\python.exe"
           
-          # First ensure pip is available
           Write-Host "Setting up pip..."
           & $pythonExe -m ensurepip --upgrade
-          
-          # Create a minimal requirements file for essential packages only
-          $minimalReqs = @"
-numpy==1.26.4
-pandas==2.2.0
-scikit-learn==1.4.0
-scipy==1.12.0
-pyarrow==15.0.0
-joblib==1.3.2
-"@
-          
-          Set-Content -Path "minimal-requirements.txt" -Value $minimalReqs
-          
-          # Install packages
-          Write-Host "Installing essential packages..."
           & $pythonExe -m pip install --upgrade pip setuptools wheel
-          & $pythonExe -m pip install -r minimal-requirements.txt --no-warn-script-location
           
-          # Note: Skipping torch and tensorflow for now due to size
-          Write-Host "Note: Large ML libraries (torch, tensorflow) will be downloaded on first use"
+          Write-Host "Installing essential packages..."
+          & $pythonExe -m pip install numpy==1.26.4 pandas==2.2.0 scikit-learn==1.4.0 scipy==1.12.0 pyarrow==15.0.0 joblib==1.3.2 --no-warn-script-location
           
-          # Clean up to reduce size
+          Write-Host "Note: Large ML libraries will be downloaded on first use"
           & $pythonExe -m pip cache purge
-          Remove-Item "minimal-requirements.txt"
         shell: pwsh
       
-      # Use tauri-action for the build
       - name: Build Tauri application
-        uses: tauri-apps/tauri-action@8e9b59ea93c8cf49f675a1ac2c5bb7cd5fdc2635  # v0.4.5
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Set environment for PyO3
           PYO3_PYTHON: ${{ github.workspace }}\src-tauri\python\python.exe
           PYTHONHOME: ${{ github.workspace }}\src-tauri\python
-        with:
-          # Don't create a release, just build
-          tagName: ''
-          releaseName: ''
-          releaseBody: ''
-          releaseDraft: false
-          prerelease: false
-          includeDebug: false
-          includeRelease: true
-          # The action handles npm install internally
-          # It will use npm install (not ci) if no lock file exists
       
-      # Upload build artifacts
       - name: Upload Windows installers
-        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3  # v4.3.1
+        uses: actions/upload-artifact@v4
         with:
           name: windows-installers-${{ github.sha }}
           path: |
@@ -126,37 +77,3 @@ joblib==1.3.2
             src-tauri/target/release/bundle/msi/*.msi
           retention-days: 7
           if-no-files-found: error
-      
-      # Create size report
-      - name: Generate size report
-        if: always()
-        run: |
-          Write-Host "=== Bundle Size Report ==="
-          
-          $exePath = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis/*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          $msiPath = Get-ChildItem -Path "src-tauri/target/release/bundle/msi/*.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
-          
-          if ($exePath) {
-            $exeSize = [math]::Round($exePath.Length / 1MB, 2)
-            Write-Host "NSIS Installer: $($exePath.Name) - ${exeSize}MB"
-          }
-          
-          if ($msiPath) {
-            $msiSize = [math]::Round($msiPath.Length / 1MB, 2)
-            Write-Host "MSI Installer: $($msiPath.Name) - ${msiSize}MB"
-          }
-          
-          # Check Python directory size
-          $pythonSize = (Get-ChildItem -Path "src-tauri/python" -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
-          Write-Host "Embedded Python size: $([math]::Round($pythonSize, 2))MB"
-        shell: pwsh
-      
-      # Upload logs on failure
-      - name: Upload build logs on failure
-        if: failure()
-        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3  # v4.3.1
-        with:
-          name: build-logs-${{ github.sha }}
-          path: |
-            **/*.log
-          retention-days: 3
