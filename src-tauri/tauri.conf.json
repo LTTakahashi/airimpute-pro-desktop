@@ -105,15 +105,7 @@
         "digestAlgorithm": "sha256",
         "timestampUrl": "https://timestamp.digicert.com",
         "nsis": {
-          "license": null,
-          "headerImage": null,
-          "sidebarImage": null,
-          "installerIcon": null,
-          "installMode": "perUser",
-          "languages": [
-            "English"
-          ],
-          "displayLanguageSelector": false
+          "installMode": "perUser"
         },
         "webviewInstallMode": {
           "type": "embedBootstrapper"
