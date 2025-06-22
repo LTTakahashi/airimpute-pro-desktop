@@ -271,6 +271,22 @@ jobs:
           Write-Host "✓ Frontend built"
         shell: pwsh
       
+      - name: Clean Build Artifacts
+        run: |
+          Write-Host "=== Cleaning Build Artifacts ==="
+          # Clean Rust target directory to ensure fresh build
+          if (Test-Path "src-tauri/target") {
+            Write-Host "Removing target directory..."
+            Remove-Item -Path "src-tauri/target" -Recurse -Force
+          }
+          # Ensure the problematic icon.ico is not used
+          if (Test-Path "src-tauri/icons/icon.ico") {
+            Write-Host "Renaming icon.ico to prevent usage..."
+            Rename-Item -Path "src-tauri/icons/icon.ico" -NewName "icon.ico.backup"
+          }
+          Write-Host "✓ Build artifacts cleaned"
+        shell: pwsh
+      
       - name: Build Tauri Application
         uses: tauri-apps/tauri-action@v0
         env:
