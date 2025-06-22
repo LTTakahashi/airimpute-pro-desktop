@@ -105,7 +105,7 @@
         "digestAlgorithm": "sha256",
         "timestampUrl": "https://timestamp.digicert.com",
         "nsis": {
-          "installMode": "perUser"
+          "installMode": "currentUser"
         },
         "webviewInstallMode": {
           "type": "embedBootstrapper"
