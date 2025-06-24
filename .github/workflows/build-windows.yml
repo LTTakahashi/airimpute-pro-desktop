@@ -271,6 +271,26 @@ jobs:
           Write-Host "✓ Frontend built"
         shell: pwsh
       
+      - name: Verify Icons Exist
+        run: |
+          Write-Host "=== Verifying Icons ==="
+          Write-Host "--- Listing src-tauri/icons directory ---"
+          if (Test-Path "src-tauri/icons") {
+            Get-ChildItem -Path "src-tauri/icons" | Format-Table Name, Length, LastWriteTime
+            
+            # Specifically check for icon.ico
+            if (Test-Path "src-tauri/icons/icon.ico") {
+              $ico = Get-Item "src-tauri/icons/icon.ico"
+              Write-Host "✓ icon.ico exists: $($ico.Length) bytes"
+            } else {
+              Write-Error "❌ icon.ico NOT FOUND - This will cause build failure!"
+            }
+          } else {
+            Write-Error "❌ Icons directory not found!"
+          }
+          Write-Host ""
+        shell: pwsh
+      
       - name: Clean Build Artifacts
         run: |
           Write-Host "=== Cleaning Build Artifacts ==="
@@ -278,11 +298,6 @@ jobs:
           if (Test-Path "src-tauri/target") {
             Write-Host "Removing target directory..."
             Remove-Item -Path "src-tauri/target" -Recurse -Force
-          }
-          # Ensure the problematic icon.ico is not used
-          if (Test-Path "src-tauri/icons/icon.ico") {
-            Write-Host "Renaming icon.ico to prevent usage..."
-            Rename-Item -Path "src-tauri/icons/icon.ico" -NewName "icon.ico.backup"
           }
           Write-Host "✓ Build artifacts cleaned"
         shell: pwsh
