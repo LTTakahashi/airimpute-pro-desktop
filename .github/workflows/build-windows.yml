@@ -24,38 +24,36 @@ jobs:
           node-version: 18
           cache: 'npm'
       
-      - name: Download Official Python Embeddable Package
+      - name: Setup Python with Development Libraries
         run: |
-          # Skip setup-python and go directly to official embeddable package
-          # Using 3.10.11 as 3.10.13 embeddable package is not available on Python.org
+          # We need the full Python installation with development libraries for PyO3
+          # The embeddable package doesn't include python310.lib needed for linking
+          
           $pythonVersion = "3.10.11"
-          $pythonUrl = "https://www.python.org/ftp/python/${pythonVersion}/python-${pythonVersion}-embed-amd64.zip"
+          Write-Host "=== Setting up Python $pythonVersion with development libraries ==="
           
-          Write-Host "=== Downloading Python $pythonVersion Embeddable Package ==="
-          Write-Host "URL: $pythonUrl"
+          # Install Python using Chocolatey (includes development files)
+          Write-Host "Installing Python via Chocolatey..."
+          choco install python310 --version=3.10.11 -y --force
           
-          # Download with proper error handling
-          try {
-            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-            Invoke-WebRequest -Uri $pythonUrl -OutFile "python-embed.zip" -UseBasicParsing
-            Write-Host "✓ Download successful"
-          } catch {
-            Write-Error "Failed to download Python: $_"
-            exit 1
+          # Refresh environment
+          refreshenv
+          
+          # Find Python installation
+          $pythonPath = "C:\Python310"
+          if (-not (Test-Path $pythonPath)) {
+            # Try alternative paths
+            $pythonPath = "C:\hostedtoolcache\windows\Python\3.10.11\x64"
+            if (-not (Test-Path $pythonPath)) {
+              $pythonPath = "${env:ProgramFiles}\Python310"
+            }
           }
           
-          # Verify download
-          if (-not (Test-Path "python-embed.zip")) {
-            Write-Error "Python download failed - file not found"
-            exit 1
-          }
+          Write-Host "Python path: $pythonPath"
           
-          $fileSize = [math]::Round((Get-Item "python-embed.zip").Length / 1MB, 2)
-          Write-Host "✓ Downloaded: ${fileSize}MB"
-          
-          # Extract Python
-          Write-Host "`n=== Extracting Python ==="
+          # Copy Python to src-tauri for embedding
           $pythonDir = "src-tauri\python"
+          Write-Host "`n=== Copying Python to $pythonDir ==="
           
           # Clean up any existing Python directory
           if (Test-Path $pythonDir) {
@@ -63,22 +61,26 @@ jobs:
             Remove-Item -Path $pythonDir -Recurse -Force
           }
           
+          # Copy Python installation
           New-Item -Path $pythonDir -ItemType Directory -Force | Out-Null
-          
-          try {
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            [System.IO.Compression.ZipFile]::ExtractToDirectory("$PWD\python-embed.zip", "$PWD\$pythonDir")
-            Write-Host "✓ Extraction successful"
-          } catch {
-            Write-Error "Failed to extract Python: $_"
-            exit 1
-          }
+          Copy-Item -Path "$pythonPath\*" -Destination $pythonDir -Recurse -Force
           
           # Verify Python executable
           $pythonExe = "$pythonDir\python.exe"
           if (-not (Test-Path $pythonExe)) {
             Write-Error "Python executable not found at: $pythonExe"
             exit 1
+          }
+          
+          # Verify python310.lib exists
+          $pythonLib = "$pythonDir\libs\python310.lib"
+          if (-not (Test-Path $pythonLib)) {
+            Write-Error "python310.lib not found at: $pythonLib"
+            Write-Host "Contents of libs directory:"
+            Get-ChildItem -Path "$pythonDir\libs" -ErrorAction SilentlyContinue
+            exit 1
+          } else {
+            Write-Host "✓ Found python310.lib"
           }
           
           # Test Python
@@ -89,45 +91,7 @@ jobs:
             exit 1
           }
           
-          # Configure embedded Python for proper module discovery
-          Write-Host "`n=== Configuring Embedded Python ==="
-          $pthFile = Get-ChildItem -Path $pythonDir -Filter "python*._pth" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($pthFile) {
-            $pthPath = $pthFile.FullName
-            Write-Host "Found .pth file: $($pthFile.Name)"
-            
-            # Create a new .pth file with proper paths
-            $pthContent = @(
-              "python310.zip",
-              ".",
-              "Lib",
-              "Lib\site-packages",
-              "import site"
-            )
-            
-            Set-Content -Path $pthPath -Value $pthContent
-            Write-Host "✓ Configured Python paths in $($pthFile.Name)"
-            
-            # Display the content for debugging
-            Write-Host "Python path configuration:"
-            Get-Content $pthPath | ForEach-Object { Write-Host "  $_" }
-          } else {
-            Write-Warning "No ._pth file found - creating python310._pth"
-            $pthPath = Join-Path $pythonDir "python310._pth"
-            $pthContent = @(
-              "python310.zip",
-              ".",
-              "Lib",
-              "Lib\site-packages", 
-              "import site"
-            )
-            Set-Content -Path $pthPath -Value $pthContent
-            Write-Host "✓ Created python310._pth with proper configuration"
-          }
-          
-          # Clean up
-          Remove-Item "python-embed.zip" -Force
-          Write-Host "`n✓ Python setup complete"
+          Write-Host "`n✓ Python setup complete with development libraries"
         shell: pwsh
       
       - name: Install pip and packages
@@ -212,15 +176,20 @@ jobs:
         run: |
           $pythonPath = "${{ github.workspace }}\src-tauri\python"
           $pythonExe = "$pythonPath\python.exe"
+          $pythonLibs = "$pythonPath\libs"
           
           Write-Host "=== Configuring PyO3 Environment ==="
           Write-Host "Python path: $pythonPath"
           Write-Host "Python exe: $pythonExe"
+          Write-Host "Python libs: $pythonLibs"
           
           # Set environment variables for subsequent steps
           echo "PYO3_PYTHON=$pythonExe" >> $env:GITHUB_ENV
           echo "PYTHONHOME=$pythonPath" >> $env:GITHUB_ENV
           echo "PYTHONPATH=$pythonPath" >> $env:GITHUB_ENV
+          
+          # Critical: Set library path for linking
+          echo "LIB=$pythonLibs;$env:LIB" >> $env:GITHUB_ENV
           
           # Add to PATH
           echo "$pythonPath" >> $env:GITHUB_PATH
@@ -229,18 +198,28 @@ jobs:
           # Also set for current step
           $env:PYO3_PYTHON = $pythonExe
           $env:PYTHONHOME = $pythonPath
+          $env:LIB = "$pythonLibs;$env:LIB"
           $env:PATH = "$pythonPath;$pythonPath\Scripts;$env:PATH"
           
           # Verify environment
           Write-Host "`n=== Verifying Environment ==="
           Write-Host "PYO3_PYTHON: $env:PYO3_PYTHON"
           Write-Host "PYTHONHOME: $env:PYTHONHOME"
+          Write-Host "LIB includes: $pythonLibs"
+          
+          # Verify python310.lib is accessible
+          if (Test-Path "$pythonLibs\python310.lib") {
+            Write-Host "✓ python310.lib is accessible"
+          } else {
+            Write-Error "python310.lib not found in $pythonLibs"
+            exit 1
+          }
           
           # Test Python is accessible
           python --version
           python -c "import sys; print(f'Python home: {sys.prefix}')"
           
-          Write-Host "`n✓ PyO3 environment configured"
+          Write-Host "`n✓ PyO3 environment configured with library paths"
         shell: pwsh
       
       - name: Install Node.js dependencies

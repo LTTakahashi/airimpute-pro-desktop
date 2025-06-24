@@ -99,6 +99,7 @@ struct CallContext {
 }
 
 impl SafePythonBridge {
+    #[allow(dead_code)]
     pub fn new(
         config: PythonBridgeConfig,
         memory_tracker: Arc<MemoryTracker>,
@@ -120,6 +121,7 @@ impl SafePythonBridge {
         }
     }
 
+    #[allow(dead_code)]
     #[instrument(skip(self))]
     pub async fn initialize(&self) -> Result<(), AcademicError> {
         info!("Initializing Python bridge");
@@ -153,6 +155,7 @@ impl SafePythonBridge {
         }
     }
 
+    #[allow(dead_code)]
     async fn initialize_python_runtime(&self) -> Result<(), AcademicError> {
         Python::with_gil(|py| {
             // Set up Python path if specified
@@ -195,6 +198,7 @@ impl SafePythonBridge {
         })
     }
 
+    #[allow(dead_code)]
     fn activate_virtual_env(&self, py: Python, venv_path: &str) -> PyResult<()> {
         let activate_script = format!("{}/bin/activate_this.py", venv_path);
         let code = format!(
