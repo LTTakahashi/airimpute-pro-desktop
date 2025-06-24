@@ -14,7 +14,7 @@ pyo3-build-config = { version = "0.20", optional = true }
 
 [dependencies]
 # Core Tauri framework
-tauri = { version = "1.5", features = [ "shell-open", "dialog-save", "process-relaunch", "fs-read-dir", "dialog-message", "clipboard-write-text", "dialog-ask", "fs-rename-file", "fs-remove-file", "fs-exists", "clipboard-read-text", "process-exit", "fs-write-file", "notification-all", "fs-read-file", "fs-remove-dir", "dialog-open", "fs-create-dir", "dialog-confirm", "protocol-asset",
+tauri = { version = "1.5", features = [ "dialog-save", "process-relaunch", "fs-read-dir", "dialog-message", "clipboard-write-text", "dialog-ask", "fs-rename-file", "fs-exists", "clipboard-read-text", "process-exit", "fs-write-file", "notification-all", "fs-read-file", "dialog-open", "fs-create-dir", "dialog-confirm", "protocol-asset",
     "system-tray"] }
 
 # Serialization

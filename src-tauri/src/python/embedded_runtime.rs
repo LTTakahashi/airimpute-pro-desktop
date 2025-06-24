@@ -1,4 +1,5 @@
 // Embedded Python runtime - completely self-contained, no external dependencies
+#![allow(dead_code)]
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::fs;
