@@ -374,19 +374,20 @@ async fn execute_imputation_v2(
             }
         }
         Err(e) => {
+            let error_msg = e.to_string();
             handle_imputation_error(
                 &state,
                 &window,
                 job_id,
-                &e.user_message(),
+                &error_msg,
             ).await;
             
             // Emit error with user-friendly message
             window.emit("imputation:error", json!({
                 "job_id": job_id.to_string(),
-                "error": e.user_message(),
-                "code": e.code(),
-                "suggestion": e.suggested_action(),
+                "error": error_msg,
+                "code": "PYTHON_ERROR",
+                "suggestion": "Check logs for more details",
             })).ok();
         }
     }

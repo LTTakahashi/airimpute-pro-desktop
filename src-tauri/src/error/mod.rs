@@ -59,6 +59,7 @@ pub enum CommandError {
 
 impl CommandError {
     /// Convert from Python errors
+    #[cfg(feature = "python-support")]
     pub fn from_py_err(err: pyo3::PyErr) -> Self {
         CommandError::PythonError {
             message: err.to_string(),
@@ -81,6 +82,7 @@ impl CommandError {
     }
 }
 
+#[cfg(feature = "python-support")]
 impl From<pyo3::PyErr> for CommandError {
     fn from(err: pyo3::PyErr) -> Self {
         CommandError::PythonError {
@@ -105,6 +107,7 @@ pub trait ErrorExt<T> {
     fn map_py_err(self) -> CommandResult<T>;
 }
 
+#[cfg(feature = "python-support")]
 impl<T> ErrorExt<T> for std::result::Result<T, pyo3::PyErr> {
     fn map_py_err(self) -> CommandResult<T> {
         self.map_err(CommandError::from_py_err)

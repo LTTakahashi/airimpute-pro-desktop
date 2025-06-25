@@ -1,12 +1,15 @@
 // Debug commands for testing Tauri and PyO3 bridges
 use tauri::command;
-use pyo3::prelude::*;
 
 #[command]
 pub fn ping() -> &'static str {
     "pong"
 }
 
+#[cfg(feature = "python-support")]
+use pyo3::prelude::*;
+
+#[cfg(feature = "python-support")]
 #[command]
 pub fn check_python_bridge() -> Result<String, String> {
     // Ensure Python interpreter is ready for multithreading
@@ -34,6 +37,7 @@ pub fn check_python_bridge() -> Result<String, String> {
     })
 }
 
+#[cfg(feature = "python-support")]
 #[command]
 pub fn test_numpy() -> Result<String, String> {
     pyo3::prepare_freethreaded_python();
@@ -57,4 +61,17 @@ pub fn test_numpy() -> Result<String, String> {
         
         Ok(format!("Numpy version: {}", version_str))
     })
+}
+
+// Stub implementations when Python is not available
+#[cfg(not(feature = "python-support"))]
+#[command]
+pub fn check_python_bridge() -> Result<String, String> {
+    Err("Python support is disabled in this build".to_string())
+}
+
+#[cfg(not(feature = "python-support"))]
+#[command]
+pub fn test_numpy() -> Result<String, String> {
+    Err("Python support is disabled in this build".to_string())
 }

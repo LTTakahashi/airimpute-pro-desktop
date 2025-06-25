@@ -1,14 +1,8 @@
 -- Initial database schema with full ACID compliance
 -- Supports comprehensive data persistence for air quality imputation
 
--- Enable foreign key constraints for referential integrity
-PRAGMA foreign_keys = ON;
-
--- Enable WAL mode for better concurrency and ACID compliance
-PRAGMA journal_mode = WAL;
-
--- Set synchronous mode to FULL for maximum durability
-PRAGMA synchronous = FULL;
+-- NOTE: PRAGMA statements are set in the Database::new() function
+-- to avoid SQLite transaction errors during migration
 
 -- Projects table - stores project metadata
 CREATE TABLE IF NOT EXISTS projects (

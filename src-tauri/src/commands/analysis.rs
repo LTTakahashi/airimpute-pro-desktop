@@ -1,10 +1,10 @@
 use tauri::command;
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
+use std::collections::HashMap;
 use tauri::State;
 use ndarray::Array2;
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
 use tracing::info;
 use uuid::Uuid;
 
@@ -456,7 +456,7 @@ async fn compute_missing_patterns_internal(
     
     // Run missing pattern analysis
     let analysis_result = bridge.run_analysis(
-        &dataset.value().data,
+        &dataset.data,
         "missing_patterns"
     )?;
     
@@ -645,7 +645,7 @@ async fn analyze_temporal_patterns_internal(
     let bridge = state.python_bridge.clone();
     
     let analysis_result = bridge.run_analysis(
-        &dataset.value().data,
+        &dataset.data,
         "temporal_patterns"
     )?;
     
@@ -731,7 +731,7 @@ async fn generate_quality_report_internal(
     let bridge = state.python_bridge.clone();
     
     let analysis_result = bridge.run_analysis(
-        &dataset.value().data,
+        &dataset.data,
         "quality_report"
     )?;
     

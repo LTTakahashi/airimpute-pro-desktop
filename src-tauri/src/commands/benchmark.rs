@@ -1,13 +1,16 @@
 use crate::error::CommandError;
-use pyo3::types::PyString;
 use crate::state::AppState;
-use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::State;
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
+
+#[cfg(feature = "python-support")]
+use pyo3::prelude::*;
+#[cfg(feature = "python-support")]
+use pyo3::types::PyString;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

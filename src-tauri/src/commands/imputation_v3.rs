@@ -1,8 +1,8 @@
 use crate::core::data::Dataset;
 use crate::core::imputation_result::ImputationResult;
-use crate::python::arrow_bridge::{
+use crate::python::{
     PythonWorkerPool, SafePythonAction, PythonTask, ndarray_to_arrow, arrow_to_ndarray, 
-    serialize_record_batch, deserialize_record_batch
+    serialize_record_batch, deserialize_record_batch, TaskStatus
 };
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
@@ -159,7 +159,7 @@ pub enum JobStatus {
 /// Initialize Python worker pool on application startup
 #[tauri::command]
 pub async fn initialize_worker_pool(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<AppState>>,
     num_workers: Option<usize>,
 ) -> Result<(), String> {
     let num_workers = num_workers.unwrap_or_else(|| {
@@ -215,7 +215,7 @@ fn validate_imputation_method(method: &ImputationMethodV3) -> Result<(), String>
 #[tauri::command]
 pub async fn run_imputation_v3(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<AppState>>,
     request: SecureImputationRequest,
 ) -> Result<Uuid, String> {
     info!("Starting imputation v3 with method: {:?}", request.method);
@@ -357,7 +357,7 @@ fn execute_imputation_v3(
     
     // Handle response
     match response.status {
-        crate::python::arrow_bridge::TaskStatus::Success => {
+        TaskStatus::Success => {
             if let Some(result) = response.result {
                 // Progress: 90% - Processing results
                 
@@ -425,14 +425,14 @@ fn execute_imputation_v3(
                 Err("No result data returned from imputation".to_string())
             }
         }
-        crate::python::arrow_bridge::TaskStatus::Failed => {
+        TaskStatus::Failed => {
             let error_msg = response.error
                 .map(|e| format!("{}: {}", e.error_type, e.message))
                 .unwrap_or_else(|| "Unknown error".to_string());
             // Progress error: {error_msg}
             Err(error_msg)
         }
-        crate::python::arrow_bridge::TaskStatus::Cancelled => {
+        TaskStatus::Cancelled => {
             // Progress error: Imputation was cancelled
             Err("Imputation was cancelled".to_string())
         }
@@ -445,7 +445,7 @@ fn execute_imputation_v3(
 /// Get status of an imputation job
 #[tauri::command]
 pub async fn get_imputation_status_v3(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<AppState>>,
     job_id: Uuid,
 ) -> Result<serde_json::Value, String> {
     let jobs = state.imputation_jobs_v3.read();
@@ -460,7 +460,7 @@ pub async fn get_imputation_status_v3(
 /// Cancel an imputation job
 #[tauri::command]
 pub async fn cancel_imputation_v3(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<AppState>>,
     job_id: Uuid,
 ) -> Result<(), String> {
     // Update job status

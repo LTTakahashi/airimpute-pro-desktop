@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
-use anyhow::Result;
+use anyhow::{Result, Context};
 
 use crate::{
     db::Database,
-    python::{PythonRuntime, safe_bridge_v2::SafePythonBridge, arrow_bridge::PythonWorkerPool},
+    python::{PythonRuntime, safe_bridge_v2::SafePythonBridge, PythonWorkerPool},
     services::{cache::CacheManager, offline_resources::OfflineResourceManager},
     core::{
         project::Project,
@@ -275,9 +275,23 @@ impl AppStateManager {
             .ok_or_else(|| anyhow::anyhow!("Failed to resolve app data directory"))?;
         let db_path = app_data_dir.join("airimpute.db");
             
-        let db = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(Database::new(&db_path))
-        })?;
+        // Get migrations path - try resource directory first, then fallback to development path
+        let migrations_path = if let Some(resource_dir) = app_handle.path_resolver().resource_dir() {
+            let resource_migrations = resource_dir.join("migrations");
+            if resource_migrations.exists() {
+                resource_migrations
+            } else {
+                // Development mode - use src-tauri/migrations
+                std::path::PathBuf::from("src-tauri/migrations")
+            }
+        } else {
+            // Fallback for development
+            std::path::PathBuf::from("src-tauri/migrations")
+        };
+        
+        let db = tokio::runtime::Runtime::new()
+            .context("Failed to create Tokio runtime")?
+            .block_on(Database::new_with_migrations(&db_path, &migrations_path))?;
         
         // Initialize Python runtime
         let python_path = app_handle

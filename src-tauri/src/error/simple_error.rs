@@ -217,6 +217,7 @@ impl From<csv::Error> for AppError {
     }
 }
 
+#[cfg(feature = "python-support")]
 impl From<pyo3::PyErr> for AppError {
     fn from(err: pyo3::PyErr) -> Self {
         AppError::PythonError {

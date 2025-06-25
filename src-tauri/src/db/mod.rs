@@ -44,6 +44,11 @@ impl<'a> DbTransaction<'a> {
 impl Database {
     /// Create new database connection with ACID compliance
     pub async fn new(path: &Path) -> Result<Self> {
+        Self::new_with_migrations(path, Path::new("./migrations")).await
+    }
+    
+    /// Create new database connection with custom migrations path
+    pub async fn new_with_migrations(path: &Path, migrations_path: &Path) -> Result<Self> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -74,10 +79,13 @@ impl Database {
             .execute(&pool)
             .await?;
         
-        // Run migrations
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await?;
+        // Run migrations using runtime loading instead of compile-time macro
+        let migrator = sqlx::migrate::Migrator::new(migrations_path)
+            .await
+            .context("Failed to create migrator")?;
+        migrator.run(&pool)
+            .await
+            .context("Failed to run migrations")?;
         
         Ok(Self { 
             pool,

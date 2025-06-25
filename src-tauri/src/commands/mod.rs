@@ -1,5 +1,14 @@
 pub mod analysis;
+
+#[cfg(feature = "python-support")]
 pub mod benchmark;
+
+#[cfg(not(feature = "python-support"))]
+pub mod benchmark_stub;
+
+#[cfg(not(feature = "python-support"))]
+pub use benchmark_stub as benchmark;
+
 pub mod data;
 pub mod debug;
 pub mod export;
