@@ -65,6 +65,17 @@ jobs:
           New-Item -Path $pythonDir -ItemType Directory -Force | Out-Null
           Copy-Item -Path "$pythonPath\*" -Destination $pythonDir -Recurse -Force
           
+          # Ensure python310.dll is in the root of the Python directory
+          $pythonDll = "$pythonPath\python310.dll"
+          if (Test-Path $pythonDll) {
+            Write-Host "Copying python310.dll to root of Python directory..."
+            Copy-Item -Path $pythonDll -Destination "$pythonDir\python310.dll" -Force
+            Write-Host "✓ python310.dll copied to $pythonDir"
+          } else {
+            Write-Error "python310.dll not found at: $pythonDll"
+            exit 1
+          }
+          
           # Verify Python executable
           $pythonExe = "$pythonDir\python.exe"
           if (-not (Test-Path $pythonExe)) {

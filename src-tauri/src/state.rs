@@ -293,12 +293,25 @@ impl AppStateManager {
             .context("Failed to create Tokio runtime")?
             .block_on(Database::new_with_migrations(&db_path, &migrations_path))?;
         
-        // Initialize Python runtime
+        // Initialize Python runtime with proper production path handling
+        #[cfg(feature = "python-support")]
+        {
+            use crate::python::runtime_init::initialize_python_runtime;
+            initialize_python_runtime(&app_handle)?;
+        }
+        
+        // Get Python path for runtime initialization
         let python_path = app_handle
             .path_resolver()
             .resource_dir()
-            .ok_or_else(|| anyhow::anyhow!("Failed to resolve resource directory"))?
-            .join("python");
+            .map(|p| p.join("python"))
+            .unwrap_or_else(|| {
+                // Fallback to checking next to executable in production
+                std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|d| d.join("python")))
+                    .unwrap_or_else(|| std::path::PathBuf::from("python"))
+            });
             
         let python_runtime = PythonRuntime::new(&python_path)?;
         

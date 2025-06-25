@@ -3,6 +3,8 @@
 pub mod bridge;
 #[cfg(feature = "python-support")]
 pub mod bridge_api;
+#[cfg(feature = "python-support")]
+pub mod runtime_init;
 
 // Stub for when Python is disabled
 #[cfg(not(feature = "python-support"))]

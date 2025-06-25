@@ -92,7 +92,8 @@
         "icons/icon.png"
       ],
       "resources": [
-        "migrations/*"
+        "migrations/*",
+        "python/**/*"
       ],
       "macOS": {
         "frameworks": [],
