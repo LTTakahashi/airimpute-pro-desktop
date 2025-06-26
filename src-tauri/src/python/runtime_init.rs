@@ -42,26 +42,26 @@ pub fn initialize_python_runtime(app_handle: &tauri::AppHandle) -> Result<()> {
         ));
     }
     
-    // Verify python310.dll on Windows
+    // Verify python311.dll on Windows
     #[cfg(target_os = "windows")]
     {
-        let python_dll = python_dir.join("python310.dll");
+        let python_dll = python_dir.join("python311.dll");
         if !python_dll.exists() {
             // Try to find it in the system
-            warn!("python310.dll not found at {:?}, checking system paths", python_dll);
+            warn!("python311.dll not found at {:?}, checking system paths", python_dll);
             
             // Check if it's in the same directory as the executable
-            let exe_dir_dll = exe_dir.join("python310.dll");
+            let exe_dir_dll = exe_dir.join("python311.dll");
             if exe_dir_dll.exists() {
-                info!("Found python310.dll in executable directory");
+                info!("Found python311.dll in executable directory");
             } else {
                 return Err(anyhow::anyhow!(
-                    "python310.dll not found. Expected at: {:?} or {:?}", 
+                    "python311.dll not found. Expected at: {:?} or {:?}", 
                     python_dll, exe_dir_dll
                 ));
             }
         } else {
-            info!("Found python310.dll at: {:?}", python_dll);
+            info!("Found python311.dll at: {:?}", python_dll);
         }
     }
     

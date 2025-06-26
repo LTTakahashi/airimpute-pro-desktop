@@ -27,25 +27,25 @@ jobs:
       - name: Setup Python with Development Libraries
         run: |
           # We need the full Python installation with development libraries for PyO3
-          # The embeddable package doesn't include python310.lib needed for linking
+          # The embeddable package doesn't include python311.lib needed for linking
           
-          $pythonVersion = "3.10.11"
+          $pythonVersion = "3.11.9"
           Write-Host "=== Setting up Python $pythonVersion with development libraries ==="
           
           # Install Python using Chocolatey (includes development files)
           Write-Host "Installing Python via Chocolatey..."
-          choco install python310 --version=3.10.11 -y --force
+          choco install python311 --version=3.11.9 -y --force
           
           # Refresh environment
           refreshenv
           
           # Find Python installation
-          $pythonPath = "C:\Python310"
+          $pythonPath = "C:\Python311"
           if (-not (Test-Path $pythonPath)) {
             # Try alternative paths
-            $pythonPath = "C:\hostedtoolcache\windows\Python\3.10.11\x64"
+            $pythonPath = "C:\hostedtoolcache\windows\Python\3.11.9\x64"
             if (-not (Test-Path $pythonPath)) {
-              $pythonPath = "${env:ProgramFiles}\Python310"
+              $pythonPath = "${env:ProgramFiles}\Python311"
             }
           }
           
@@ -65,14 +65,14 @@ jobs:
           New-Item -Path $pythonDir -ItemType Directory -Force | Out-Null
           Copy-Item -Path "$pythonPath\*" -Destination $pythonDir -Recurse -Force
           
-          # Ensure python310.dll is in the root of the Python directory
-          $pythonDll = "$pythonPath\python310.dll"
+          # Ensure python311.dll is in the root of the Python directory
+          $pythonDll = "$pythonPath\python311.dll"
           if (Test-Path $pythonDll) {
-            Write-Host "Copying python310.dll to root of Python directory..."
-            Copy-Item -Path $pythonDll -Destination "$pythonDir\python310.dll" -Force
-            Write-Host "✓ python310.dll copied to $pythonDir"
+            Write-Host "Copying python311.dll to root of Python directory..."
+            Copy-Item -Path $pythonDll -Destination "$pythonDir\python311.dll" -Force
+            Write-Host "✓ python311.dll copied to $pythonDir"
           } else {
-            Write-Error "python310.dll not found at: $pythonDll"
+            Write-Error "python311.dll not found at: $pythonDll"
             exit 1
           }
           
@@ -83,15 +83,15 @@ jobs:
             exit 1
           }
           
-          # Verify python310.lib exists
-          $pythonLib = "$pythonDir\libs\python310.lib"
+          # Verify python311.lib exists
+          $pythonLib = "$pythonDir\libs\python311.lib"
           if (-not (Test-Path $pythonLib)) {
-            Write-Error "python310.lib not found at: $pythonLib"
+            Write-Error "python311.lib not found at: $pythonLib"
             Write-Host "Contents of libs directory:"
             Get-ChildItem -Path "$pythonDir\libs" -ErrorAction SilentlyContinue
             exit 1
           } else {
-            Write-Host "✓ Found python310.lib"
+            Write-Host "✓ Found python311.lib"
           }
           
           # Test Python
@@ -218,11 +218,11 @@ jobs:
           Write-Host "PYTHONHOME: $env:PYTHONHOME"
           Write-Host "LIB includes: $pythonLibs"
           
-          # Verify python310.lib is accessible
-          if (Test-Path "$pythonLibs\python310.lib") {
-            Write-Host "✓ python310.lib is accessible"
+          # Verify python311.lib is accessible
+          if (Test-Path "$pythonLibs\python311.lib") {
+            Write-Host "✓ python311.lib is accessible"
           } else {
-            Write-Error "python310.lib not found in $pythonLibs"
+            Write-Error "python311.lib not found in $pythonLibs"
             exit 1
           }
           
@@ -319,7 +319,7 @@ jobs:
           Write-Host "=== Build Summary ==="
           Write-Host "Status: ${{ job.status }}"
           Write-Host "Commit: ${{ github.sha }}"
-          Write-Host "Python: 3.10.11 (Official Embeddable)"
+          Write-Host "Python: 3.11.9 (Official Full)"
           
           # Check build outputs
           $nsisPath = "src-tauri\target\release\bundle\nsis"

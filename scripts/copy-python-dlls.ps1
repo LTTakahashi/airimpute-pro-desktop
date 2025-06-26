@@ -12,26 +12,26 @@ if (-not (Test-Path $PythonDir)) {
     exit 1
 }
 
-# Find python310.dll
-$pythonDll = Get-ChildItem -Path $PythonDir -Filter "python310.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+# Find python311.dll
+$pythonDll = Get-ChildItem -Path $PythonDir -Filter "python311.dll" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
 
 if ($pythonDll) {
-    Write-Host "Found python310.dll at: $($pythonDll.FullName)"
+    Write-Host "Found python311.dll at: $($pythonDll.FullName)"
     
     # Copy to target directory if it exists
     if (Test-Path $TargetDir) {
         Copy-Item -Path $pythonDll.FullName -Destination $TargetDir -Force
-        Write-Host "✓ Copied python310.dll to $TargetDir"
+        Write-Host "✓ Copied python311.dll to $TargetDir"
     }
     
     # Also copy to the root of Python directory if not already there
-    $rootDll = Join-Path $PythonDir "python310.dll"
+    $rootDll = Join-Path $PythonDir "python311.dll"
     if (-not (Test-Path $rootDll)) {
         Copy-Item -Path $pythonDll.FullName -Destination $rootDll -Force
-        Write-Host "✓ Copied python310.dll to root of Python directory"
+        Write-Host "✓ Copied python311.dll to root of Python directory"
     }
 } else {
-    Write-Error "python310.dll not found in $PythonDir"
+    Write-Error "python311.dll not found in $PythonDir"
     exit 1
 }
 

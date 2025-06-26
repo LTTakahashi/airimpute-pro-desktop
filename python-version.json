@@ -1,0 +1,16 @@
+{
+  "version": "3.11.9",
+  "major": "3",
+  "minor": "11",
+  "patch": "9",
+  "dll_name": "python311.dll",
+  "lib_name": "python311.lib",
+  "executable": {
+    "windows": "python.exe",
+    "linux": "python3",
+    "macos": "python3"
+  },
+  "embeddable_url": "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip",
+  "choco_package": "python311",
+  "notes": "Python 3.11.9 is the latest stable version with good performance improvements and full compatibility with our scientific packages"
+}
