@@ -109,7 +109,9 @@
   },
   "optionalDependencies": {
     "@microsoft/windows-sdk": "^10.0.0",
-    "windows-build-tools": "^5.2.2"
+    "windows-build-tools": "^5.2.2",
+    "@rollup/rollup-win32-x64-msvc": "^4.9.6",
+    "@tauri-apps/cli-win32-x64-msvc": "^1.5.9"
   },
   "engines": {
     "node": ">=18.0.0",

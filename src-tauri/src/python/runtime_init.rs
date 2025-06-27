@@ -42,41 +42,92 @@ pub fn initialize_python_runtime(app_handle: &tauri::AppHandle) -> Result<()> {
         ));
     }
     
-    // Verify python311.dll on Windows
+    // Verify Python DLL on Windows with version flexibility
     #[cfg(target_os = "windows")]
     {
-        let python_dll = python_dir.join("python311.dll");
-        if !python_dll.exists() {
-            // Try to find it in the system
-            warn!("python311.dll not found at {:?}, checking system paths", python_dll);
+        // Try to detect Python version from available DLLs
+        let possible_versions = vec!["311", "310", "39", "38"];
+        let mut found_dll = None;
+        let mut found_version = None;
+        
+        for version in &possible_versions {
+            let dll_name = format!("python{}.dll", version);
+            let python_dll = python_dir.join(&dll_name);
             
-            // Check if it's in the same directory as the executable
-            let exe_dir_dll = exe_dir.join("python311.dll");
-            if exe_dir_dll.exists() {
-                info!("Found python311.dll in executable directory");
-            } else {
-                return Err(anyhow::anyhow!(
-                    "python311.dll not found. Expected at: {:?} or {:?}", 
-                    python_dll, exe_dir_dll
-                ));
+            if python_dll.exists() {
+                info!("Found {} at: {:?}", dll_name, python_dll);
+                found_dll = Some(python_dll);
+                found_version = Some(version.to_string());
+                break;
             }
-        } else {
-            info!("Found python311.dll at: {:?}", python_dll);
+            
+            // Also check in DLLs subdirectory
+            let dll_subdir = python_dir.join("DLLs").join(&dll_name);
+            if dll_subdir.exists() {
+                info!("Found {} in DLLs directory", dll_name);
+                // Copy to root for easier access
+                if let Err(e) = std::fs::copy(&dll_subdir, &python_dll) {
+                    warn!("Failed to copy {} to root: {}", dll_name, e);
+                }
+                found_dll = Some(python_dll);
+                found_version = Some(version.to_string());
+                break;
+            }
+            
+            // Check executable directory
+            let exe_dir_dll = exe_dir.join(&dll_name);
+            if exe_dir_dll.exists() {
+                info!("Found {} in executable directory", dll_name);
+                found_dll = Some(exe_dir_dll);
+                found_version = Some(version.to_string());
+                break;
+            }
+        }
+        
+        if found_dll.is_none() {
+            return Err(anyhow::anyhow!(
+                "No Python DLL found. Searched for versions: {:?}", 
+                possible_versions
+            ));
+        }
+        
+        // Set environment variable for detected Python version
+        if let Some(version) = found_version {
+            std::env::set_var("PYTHON_DLL_VERSION", version);
         }
     }
     
     // Set environment variables for Python
     std::env::set_var("PYTHONHOME", &python_dir);
-    std::env::set_var("PYTHONPATH", python_dir.join("Lib").join("site-packages"));
     
-    // Add Python to PATH
+    // Set PYTHONPATH with multiple directories
+    let site_packages = python_dir.join("Lib").join("site-packages");
+    let pythonpath = if cfg!(target_os = "windows") {
+        format!("{};{}", python_dir.display(), site_packages.display())
+    } else {
+        format!("{}:{}", python_dir.display(), site_packages.display())
+    };
+    std::env::set_var("PYTHONPATH", pythonpath);
+    
+    // Add Python to PATH with all necessary directories
     let path = std::env::var("PATH").unwrap_or_default();
     let new_path = if cfg!(target_os = "windows") {
-        format!("{};{}", python_dir.display(), path)
+        let scripts = python_dir.join("Scripts");
+        let dlls = python_dir.join("DLLs");
+        format!("{};{};{};{}", 
+            python_dir.display(), 
+            scripts.display(),
+            dlls.display(),
+            path
+        )
     } else {
         format!("{}:{}", python_dir.join("bin").display(), path)
     };
     std::env::set_var("PATH", new_path);
+    
+    // Set additional Python-specific environment variables
+    std::env::set_var("PYTHONDONTWRITEBYTECODE", "1"); // Don't create .pyc files
+    std::env::set_var("PYTHONIOENCODING", "utf-8"); // Force UTF-8 encoding
     
     info!("Python runtime initialized successfully");
     info!("PYTHONHOME: {:?}", python_dir);

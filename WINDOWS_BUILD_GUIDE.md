@@ -1,157 +1,251 @@
-# Windows Cross-Compilation Guide for AirImpute Pro
+# Windows Build Guide for AirImpute Pro Desktop
 
-## Overview
+This guide ensures successful builds on Windows, both locally and in GitHub Actions.
 
-This guide describes how to build AirImpute Pro for Windows from a Linux environment using secure cross-compilation techniques.
+## Prerequisites
 
-## Build Methods
+### Local Development
+1. **Windows 10/11** (64-bit)
+2. **Visual Studio Build Tools 2022** or Visual Studio 2022
+   - Install "Desktop development with C++" workload
+   - Ensure Windows 10 SDK is selected
+3. **Rust** (latest stable)
+   ```powershell
+   winget install Rustlang.Rust.MSVC
+   ```
+4. **Node.js 18+** and npm 9+
+5. **Python 3.11.x** (full installation, not embeddable)
+   ```powershell
+   choco install python311
+   ```
 
-### Method 1: Docker Build (Recommended)
+### GitHub Actions
+All prerequisites are automatically installed by the workflow.
 
-The Docker build provides a consistent, reproducible environment with all dependencies pre-installed.
+## Quick Start
 
-```bash
-# Run the Docker-based build
-./build-windows-docker.sh
+### Local Build
+```powershell
+# From project root
+.\build-windows-fix.bat
 ```
 
-This will:
-1. Build a secure Docker image with all dependencies
-2. Run the cross-compilation process
-3. Generate Windows installers in `dist/windows/`
+### Validate GitHub Actions Setup
+```powershell
+# Check if everything is configured correctly
+.\scripts\validate-github-actions.ps1
 
-### Method 2: Direct Build
-
-If you have all dependencies installed locally:
-
-```bash
-# Run the build script directly
-./build-windows-secure-v3.sh
+# Auto-fix issues (where possible)
+.\scripts\validate-github-actions.ps1 -Fix
 ```
 
-Required dependencies:
-- Rust with `x86_64-pc-windows-msvc` target
-- Zig 0.11.0 (for cross-compilation)
-- Node.js 18+ and npm
-- NSIS (makensis command)
-- osslsigncode (optional, for code signing)
+## Architecture Overview
 
-## Security Features
+### Python Integration
+- Uses **PyO3** for Python-Rust interop
+- Embeds Python 3.11 runtime in the application
+- Scientific packages: numpy, pandas, scikit-learn, scipy
 
-The build process includes several security hardening measures:
+### Key Components
+1. **Frontend**: React + TypeScript + Vite
+2. **Backend**: Rust + Tauri
+3. **Scientific Computing**: Embedded Python with PyO3
+4. **Packaging**: NSIS and MSI installers
 
-### 1. Compiler Security Flags
-- **ASLR** (Address Space Layout Randomization)
-- **DEP** (Data Execution Prevention)
-- **CFG** (Control Flow Guard)
-- **High Entropy ASLR**
-- **Intel CET** (Control-flow Enforcement Technology)
-- **Stack Protection**
+## Common Issues and Solutions
 
-### 2. Dependency Verification
-- SHA256 checksums for all downloaded dependencies
-- Security audits that fail the build on vulnerabilities
-- Pinned versions for reproducibility
+### 1. Python DLL Not Found
+**Error**: `python311.dll not found`
 
-### 3. Secure Configuration
-- Restricted filesystem access scope
-- Disabled dangerous permissions (shell.open, file deletion)
-- Per-user installation (no admin rights required)
-- WebView2 bootstrapper embedded
+**Solution**:
+- Ensure Python 3.11 is installed (not just embeddable package)
+- Run `scripts\copy-python-dlls.ps1` manually
+- Check `src-tauri\python\` directory contains the DLL
 
-## Code Signing
+### 2. PyO3 Linking Errors
+**Error**: `error LNK2019: unresolved external symbol`
 
-To sign the Windows executable, provide the following environment variables:
+**Solution**:
+- Verify `python311.lib` exists in `src-tauri\python\libs\`
+- Check environment variables:
+  ```powershell
+  echo $env:PYO3_PYTHON
+  echo $env:LIB
+  ```
+- Ensure Visual Studio Build Tools are installed
 
-```bash
-export CODE_SIGNING_CERT_FILE="/path/to/certificate.pfx"
-export CODE_SIGNING_KEY_FILE="/path/to/private-key.pem"
-export CODE_SIGNING_KEY_PASSWORD="your-password"
+### 3. Missing Node Modules
+**Error**: `Cannot find module '@rollup/rollup-win32-x64-msvc'`
 
-./build-windows-docker.sh
+**Solution**:
+```powershell
+npm install @rollup/rollup-win32-x64-msvc --save-optional
+npm install @tauri-apps/cli-win32-x64-msvc --save-optional
 ```
 
-## Build Output
+### 4. GitHub Actions Failures
+**Error**: Build succeeds locally but fails in CI
 
-The build generates:
-- **NSIS Installer**: `AirImpute-Pro_1.0.0_x64-setup.exe`
-- **Standalone Executable**: `airimpute-pro.exe`
+**Check**:
+1. Python version mismatch (must be 3.11.x)
+2. Missing Visual C++ redistributables
+3. Incorrect PyO3 environment variables
 
-Both files will be in:
-- Docker build: `dist/windows/`
-- Direct build: `build-windows/target/x86_64-pc-windows-msvc/release/bundle/nsis/`
+## Build Process Details
 
-## Troubleshooting
-
-### Missing Dependencies
-
-If the build fails due to missing dependencies, use the Docker build method or install:
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install -y nsis osslsigncode
-
-# Install Zig
-curl -L https://ziglang.org/download/0.11.0/zig-linux-x86_64-0.11.0.tar.xz | tar -xJ
-export PATH="$PWD/zig-linux-x86_64-0.11.0:$PATH"
-
-# Add Windows target to Rust
-rustup target add x86_64-pc-windows-msvc
-```
-
-### WebView2 Runtime
-
-The application requires Microsoft Edge WebView2 Runtime. The installer will:
-1. Check if WebView2 is installed
-2. Download and install it if needed (requires internet connection)
-3. Proceed with the application installation
-
-### Build Failures
-
-1. **Linker errors**: Ensure Zig is properly installed and in PATH
-2. **npm audit failures**: Update vulnerable dependencies or use `npm audit fix`
-3. **Cargo audit failures**: Update Rust dependencies with security fixes
-
-## CI/CD Integration
-
-For GitHub Actions, use the provided workflow:
-
+### 1. Python Setup (GitHub Actions)
 ```yaml
-- name: Build Windows Executable
-  run: ./build-windows-secure-v3.sh
-  env:
-    TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-    TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+- Installs Python 3.11.9 via Chocolatey
+- Copies entire Python installation to src-tauri/python
+- Installs scientific packages
+- Configures PyO3 environment
 ```
 
-## Security Considerations
+### 2. Frontend Build
+```bash
+npm run build:frontend
+```
+- Compiles TypeScript
+- Bundles with Vite
+- Outputs to `dist/` directory
 
-1. **Supply Chain**: All dependencies are verified with SHA256 checksums
-2. **Build Environment**: Uses non-root user in Docker
-3. **Runtime Security**: Executable includes all modern Windows security features
-4. **Code Signing**: Strongly recommended for production releases
+### 3. Tauri Build
+```bash
+npm run tauri build
+```
+- Compiles Rust code with embedded Python
+- Links against python311.lib
+- Packages into NSIS/MSI installers
 
-## Performance Notes
+## Environment Variables
 
-The release build is optimized with:
-- Link-Time Optimization (LTO)
-- Single codegen unit for maximum optimization
-- Panic=abort for smaller binary size
-- Strip debug symbols
+### Required for PyO3
+```powershell
+$env:PYO3_PYTHON = "path\to\python.exe"
+$env:PYO3_CROSS_LIB_DIR = "path\to\python\libs"
+$env:PYO3_CROSS_PYTHON_VERSION = "3.11"
+$env:PYTHONHOME = "path\to\python"
+$env:PYTHONPATH = "path\to\python;path\to\site-packages"
+```
+
+### Build Optimization
+```powershell
+$env:RUST_BACKTRACE = "1"  # For debugging
+$env:CARGO_BUILD_JOBS = "4"  # Parallel compilation
+```
 
 ## Testing the Build
 
-After building, test on a Windows machine:
+### 1. Verify Python Integration
+```powershell
+# After build, from src-tauri\target\release
+.\airimpute-pro.exe --version
+```
 
-1. Copy the installer to Windows
-2. Run the installer
-3. Verify the application launches
-4. Check Windows Defender doesn't flag it
-5. Verify all features work correctly
+### 2. Check Installed Files
+The installer should include:
+- Main executable
+- Python runtime (python311.dll)
+- Scientific packages
+- Visual C++ runtime DLLs
+
+### 3. Test Installation
+1. Run the NSIS installer from `src-tauri\target\release\bundle\nsis\`
+2. Launch the application
+3. Verify Python features work (try importing data)
+
+## GitHub Actions Secrets
+
+Required secrets in repository settings:
+- `TAURI_PRIVATE_KEY`: For update signing (optional)
+- `TAURI_KEY_PASSWORD`: Password for private key (optional)
+
+## Troubleshooting Workflow
+
+1. **Run validation script**:
+   ```powershell
+   .\scripts\validate-github-actions.ps1
+   ```
+
+2. **Check build logs**:
+   - Look for Python version detection
+   - Verify DLL copying steps
+   - Check PyO3 environment setup
+
+3. **Enable debug logging**:
+   ```yaml
+   env:
+     RUST_LOG: debug
+     RUST_BACKTRACE: 1
+   ```
+
+4. **Test minimal build**:
+   ```powershell
+   cd src-tauri
+   cargo build --no-default-features --features custom-protocol
+   ```
+
+## Performance Tips
+
+1. **Use Cargo cache in CI**:
+   ```yaml
+   - uses: Swatinem/rust-cache@v2
+   ```
+
+2. **Optimize release builds**:
+   - Already configured in Cargo.toml
+   - Uses LTO and single codegen unit
+
+3. **Reduce installer size**:
+   - Strip debug symbols
+   - Compress Python packages
+   - Remove unnecessary files
+
+## Security Considerations
+
+1. **Code Signing**: 
+   - Use EV certificate for SmartScreen reputation
+   - Sign both executable and installer
+
+2. **Python Isolation**:
+   - Embedded Python doesn't use system packages
+   - Controlled environment variables
+   - No user site-packages
+
+3. **DLL Security**:
+   - SetDefaultDllDirectories called on startup
+   - Only loads DLLs from secure locations
+
+## Maintenance
+
+### Updating Python Version
+1. Update version in:
+   - `.github/workflows/build-windows.yml`
+   - `src-tauri/src/python/runtime_init.rs`
+   - Documentation
+
+2. Test with new version:
+   ```powershell
+   choco install python312  # Example for 3.12
+   ```
+
+3. Update package versions in workflow
+
+### Updating Dependencies
+```powershell
+# Update npm packages
+npm update
+npm audit fix
+
+# Update Rust dependencies
+cd src-tauri
+cargo update
+```
 
 ## Support
 
-For issues or questions:
-- Check build logs in `build-windows/build-*.log`
-- Review security scan results
-- Ensure all dependencies are properly installed
+For build issues:
+1. Check this guide first
+2. Run validation script
+3. Review GitHub Actions logs
+4. Open issue with full error output

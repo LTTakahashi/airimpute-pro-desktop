@@ -39,14 +39,28 @@ jobs:
           # Refresh environment
           refreshenv
           
-          # Find Python installation
-          $pythonPath = "C:\Python311"
-          if (-not (Test-Path $pythonPath)) {
-            # Try alternative paths
-            $pythonPath = "C:\hostedtoolcache\windows\Python\3.11.9\x64"
-            if (-not (Test-Path $pythonPath)) {
-              $pythonPath = "${env:ProgramFiles}\Python311"
+          # Find Python installation with improved detection
+          $pythonPath = $null
+          $possiblePaths = @(
+            "C:\Python311",
+            "C:\Python311-64",
+            "C:\hostedtoolcache\windows\Python\3.11.9\x64",
+            "${env:ProgramFiles}\Python311",
+            "${env:ProgramFiles(x86)}\Python311",
+            "${env:ChocolateyInstall}\lib\python311\tools\python311"
+          )
+          
+          foreach ($path in $possiblePaths) {
+            if (Test-Path "$path\python.exe") {
+              $pythonPath = $path
+              Write-Host "✓ Found Python at: $pythonPath"
+              break
             }
+          }
+          
+          if (-not $pythonPath) {
+            Write-Error "Python installation not found in any expected location"
+            exit 1
           }
           
           Write-Host "Python path: $pythonPath"
@@ -65,15 +79,36 @@ jobs:
           New-Item -Path $pythonDir -ItemType Directory -Force | Out-Null
           Copy-Item -Path "$pythonPath\*" -Destination $pythonDir -Recurse -Force
           
-          # Ensure python311.dll is in the root of the Python directory
+          # Ensure python311.dll is in multiple locations for compatibility
           $pythonDll = "$pythonPath\python311.dll"
           if (Test-Path $pythonDll) {
-            Write-Host "Copying python311.dll to root of Python directory..."
+            Write-Host "Copying python311.dll to multiple locations..."
             Copy-Item -Path $pythonDll -Destination "$pythonDir\python311.dll" -Force
+            # Also copy to DLLs directory if it exists
+            if (Test-Path "$pythonDir\DLLs") {
+              Copy-Item -Path $pythonDll -Destination "$pythonDir\DLLs\python311.dll" -Force
+            }
             Write-Host "✓ python311.dll copied to $pythonDir"
           } else {
-            Write-Error "python311.dll not found at: $pythonDll"
-            exit 1
+            # Try to find python311.dll in Windows System directory
+            $sysDll = "${env:WINDIR}\System32\python311.dll"
+            if (Test-Path $sysDll) {
+              Write-Host "Found python311.dll in System32, copying..."
+              Copy-Item -Path $sysDll -Destination "$pythonDir\python311.dll" -Force
+            } else {
+              Write-Error "python311.dll not found at: $pythonDll or $sysDll"
+              exit 1
+            }
+          }
+          
+          # Copy Visual C++ runtime DLLs if needed
+          $vcDlls = @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")
+          foreach ($dll in $vcDlls) {
+            $sourceDll = "$pythonPath\$dll"
+            if (Test-Path $sourceDll) {
+              Copy-Item -Path $sourceDll -Destination "$pythonDir\$dll" -Force
+              Write-Host "✓ Copied $dll"
+            }
           }
           
           # Verify Python executable
@@ -100,6 +135,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             Write-Error "Python executable test failed"
             exit 1
+          }
+          
+          # Verify site-packages directory exists
+          $sitePackages = "$pythonDir\Lib\site-packages"
+          if (-not (Test-Path $sitePackages)) {
+            New-Item -Path $sitePackages -ItemType Directory -Force | Out-Null
+            Write-Host "✓ Created site-packages directory"
           }
           
           Write-Host "`n✓ Python setup complete with development libraries"
@@ -197,20 +239,25 @@ jobs:
           # Set environment variables for subsequent steps
           echo "PYO3_PYTHON=$pythonExe" >> $env:GITHUB_ENV
           echo "PYTHONHOME=$pythonPath" >> $env:GITHUB_ENV
-          echo "PYTHONPATH=$pythonPath" >> $env:GITHUB_ENV
+          echo "PYTHONPATH=$pythonPath;$pythonPath\Lib\site-packages" >> $env:GITHUB_ENV
           
           # Critical: Set library path for linking
-          echo "LIB=$pythonLibs;$env:LIB" >> $env:GITHUB_ENV
+          echo "LIB=$pythonLibs;$pythonPath;$env:LIB" >> $env:GITHUB_ENV
           
           # Add to PATH
           echo "$pythonPath" >> $env:GITHUB_PATH
           echo "$pythonPath\Scripts" >> $env:GITHUB_PATH
+          echo "$pythonPath\DLLs" >> $env:GITHUB_PATH
           
           # Also set for current step
           $env:PYO3_PYTHON = $pythonExe
           $env:PYTHONHOME = $pythonPath
-          $env:LIB = "$pythonLibs;$env:LIB"
-          $env:PATH = "$pythonPath;$pythonPath\Scripts;$env:PATH"
+          $env:LIB = "$pythonLibs;$pythonPath;$env:LIB"
+          $env:PATH = "$pythonPath;$pythonPath\Scripts;$pythonPath\DLLs;$env:PATH"
+          
+          # Set additional PyO3 specific variables
+          echo "PYO3_CROSS_PYTHON_VERSION=3.11" >> $env:GITHUB_ENV
+          echo "PYO3_CROSS_LIB_DIR=$pythonPath" >> $env:GITHUB_ENV
           
           # Verify environment
           Write-Host "`n=== Verifying Environment ==="
@@ -221,14 +268,17 @@ jobs:
           # Verify python311.lib is accessible
           if (Test-Path "$pythonLibs\python311.lib") {
             Write-Host "✓ python311.lib is accessible"
+            # Also copy to root for some build systems
+            Copy-Item -Path "$pythonLibs\python311.lib" -Destination "$pythonPath\python311.lib" -Force
           } else {
             Write-Error "python311.lib not found in $pythonLibs"
             exit 1
           }
           
           # Test Python is accessible
-          python --version
-          python -c "import sys; print(f'Python home: {sys.prefix}')"
+          & $pythonExe --version
+          & $pythonExe -c "import sys; print(f'Python home: {sys.prefix}')"
+          & $pythonExe -c "import sys; print(f'Python version: {sys.version}')"
           
           Write-Host "`n✓ PyO3 environment configured with library paths"
         shell: pwsh
@@ -292,12 +342,51 @@ jobs:
           Write-Host "✓ Build artifacts cleaned"
         shell: pwsh
       
+      - name: Pre-build Python DLL Copy
+        run: |
+          Write-Host "=== Pre-build Python DLL Copy ==="
+          
+          # Run the PowerShell script to copy DLLs
+          & .\scripts\copy-python-dlls.ps1
+          
+          # Create target directories if they don't exist
+          $targetDirs = @(
+            "src-tauri\target\release",
+            "src-tauri\target\debug"
+          )
+          
+          foreach ($dir in $targetDirs) {
+            if (-not (Test-Path $dir)) {
+              New-Item -Path $dir -ItemType Directory -Force | Out-Null
+              Write-Host "Created directory: $dir"
+            }
+          }
+          
+          # Copy python311.dll to expected locations
+          $pythonDll = "src-tauri\python\python311.dll"
+          if (Test-Path $pythonDll) {
+            foreach ($dir in $targetDirs) {
+              Copy-Item -Path $pythonDll -Destination $dir -Force
+              Write-Host "✓ Copied python311.dll to $dir"
+            }
+          }
+          
+          Write-Host "✓ Pre-build DLL copy complete"
+        shell: pwsh
+      
       - name: Build Tauri Application
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          # Ensure PyO3 environment is available
+          PYO3_PYTHON: ${{ env.PYO3_PYTHON }}
+          PYTHONHOME: ${{ env.PYTHONHOME }}
+          PYTHONPATH: ${{ env.PYTHONPATH }}
+          LIB: ${{ env.LIB }}
+          PYO3_CROSS_PYTHON_VERSION: ${{ env.PYO3_CROSS_PYTHON_VERSION }}
+          PYO3_CROSS_LIB_DIR: ${{ env.PYO3_CROSS_LIB_DIR }}
         with:
           # Configure tauri script to use our npm script
           tauriScript: npm run tauri

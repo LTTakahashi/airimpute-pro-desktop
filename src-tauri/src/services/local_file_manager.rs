@@ -411,9 +411,13 @@ impl LocalFileManager {
         let file = File::create(dest)?;
         let mut zip = ZipWriter::new(file);
         
-        let options = FileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated)
-            .unix_permissions(0o644);
+        let mut options = FileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        
+        #[cfg(unix)]
+        {
+            options = options.unix_permissions(0o644);
+        }
         
         let filename = source.file_name()
             .unwrap_or_default()

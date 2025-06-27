@@ -133,6 +133,12 @@ inherits = "release"
 strip = false
 debug = true
 
+[profile.dev-release]
+inherits = "release"
+lto = false
+codegen-units = 16
+opt-level = 2
+
 [dev-dependencies]
 tempfile = "3"
 mockito = "1"
