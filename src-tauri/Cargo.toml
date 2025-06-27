@@ -103,7 +103,7 @@ rayon = "1.8"
 crossbeam = "0.8"
 
 # Math and Statistics
-statrs = "0.16"
+statrs = "0.18"
 approx = "0.5"
 num-traits = "0.2"
 
