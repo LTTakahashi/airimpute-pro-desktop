@@ -18,8 +18,8 @@ rustflags = [
 
 [target.x86_64-pc-windows-msvc.env]
 # Configure PyO3 to use the bundled Python 3.11 on Windows
-PYO3_PYTHON = "./src-tauri/python/python.exe"
-PYO3_CROSS_LIB_DIR = "./src-tauri/python"
+PYO3_PYTHON = "./python-dist/python.exe"
+PYO3_CROSS_LIB_DIR = "./python-dist"
 PYO3_CROSS_PYTHON_VERSION = "3.11"
 
 [target.x86_64-pc-windows-gnu]

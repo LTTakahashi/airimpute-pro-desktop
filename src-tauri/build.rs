@@ -1,4 +1,11 @@
 fn main() {
+    // Tell cargo to invalidate the built crate whenever the build script itself changes
+    println!("cargo:rerun-if-changed=build.rs");
+    
+    // Watch only the Python distribution directory itself (not its contents)
+    // This prevents cargo from watching thousands of individual files
+    println!("cargo:rerun-if-changed=../python-dist");
+    
     // Standard Tauri build
     tauri_build::build();
     
@@ -13,7 +20,8 @@ fn main() {
         #[cfg(target_os = "windows")]
         {
             // Check if we have an embedded Python distribution
-            let python_dir = manifest_path.join("python");
+            // Python distribution is now at project root level
+            let python_dir = manifest_path.join("../python-dist");
             let python_exe = python_dir.join("python.exe");
             
             if python_exe.exists() {

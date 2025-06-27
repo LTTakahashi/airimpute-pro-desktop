@@ -14,8 +14,15 @@ pub fn initialize_python_runtime(app_handle: &tauri::AppHandle) -> Result<()> {
     
     // Determine Python location based on build type
     let python_dir = if cfg!(debug_assertions) {
-        // Development: Python is in src-tauri/python
-        exe_dir.join("python")
+        // Development: Python is in python-dist at project root
+        exe_dir.parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent())
+            .map(|p| p.join("python-dist"))
+            .unwrap_or_else(|| {
+                // Fallback to old location
+                exe_dir.join("python")
+            })
     } else {
         // Production: Python is bundled as a resource
         app_handle.path_resolver()
