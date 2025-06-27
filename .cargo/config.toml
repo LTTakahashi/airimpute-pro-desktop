@@ -4,6 +4,9 @@
 [build]
 target-dir = "src-tauri/target"
 
+[env]
+# PyO3 configuration is now handled per-platform below
+
 [target.x86_64-pc-windows-msvc]
 # Security-hardened linker flags
 rustflags = [
@@ -12,6 +15,12 @@ rustflags = [
     "-C", "link-arg=/guard:cf",        # Control Flow Guard
     "-C", "target-feature=+crt-static" # Static CRT linking for self-contained exe
 ]
+
+[target.x86_64-pc-windows-msvc.env]
+# Configure PyO3 to use the bundled Python 3.11 on Windows
+PYO3_PYTHON = "./src-tauri/python/python.exe"
+PYO3_CROSS_LIB_DIR = "./src-tauri/python"
+PYO3_CROSS_PYTHON_VERSION = "3.11"
 
 [target.x86_64-pc-windows-gnu]
 # For MinGW cross-compilation (if needed)
@@ -33,3 +42,23 @@ strip = true         # Strip debug symbols from the final binary
 inherits = "release"
 strip = false
 debug = true
+
+# Linux-specific configuration for libsoup conflict resolution
+[target.x86_64-unknown-linux-gnu]
+rustflags = [
+    "-C", "link-arg=-Wl,--as-needed",     # Only link libraries that are actually used
+    "-C", "link-arg=-Wl,--no-undefined",  # Fail on undefined symbols
+    "-C", "link-arg=-lsoup-2.4",          # Explicitly link libsoup2
+]
+
+[target.x86_64-unknown-linux-gnu.env]
+# Configure PyO3 to use system Python on Linux
+PYO3_PYTHON = "/usr/bin/python3"
+# Force pkg-config to filter out libsoup3 references
+PKG_CONFIG = "./pkg-config-wrapper.sh"
+# Disable webkit compositing to avoid rendering issues
+WEBKIT_DISABLE_COMPOSITING_MODE = "1"
+# Force software rendering if needed
+WEBKIT_DISABLE_SANDBOX = "1"
+# Use portal for file dialogs to avoid GTK conflicts
+GTK_USE_PORTAL = "1"

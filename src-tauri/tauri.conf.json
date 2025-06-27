@@ -93,7 +93,10 @@
       ],
       "resources": [
         "migrations/*",
-        "python/**/*"
+        "python/**/*",
+        "python/python310.dll",
+        "python/python311.dll",
+        "python/python3.dll"
       ],
       "macOS": {
         "frameworks": [],
