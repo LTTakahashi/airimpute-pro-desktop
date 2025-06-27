@@ -1,3 +1,5 @@
+pub mod dll_security;
+
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use tauri::api::path::{home_dir, document_dir, download_dir, data_dir};

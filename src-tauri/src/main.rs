@@ -30,20 +30,7 @@ use crate::state::{AppState, AppStateManager};
 static GLOBAL: MiMalloc = MiMalloc;
 
 fn main() {
-    // Windows security: Prevent DLL hijacking - must be first!
-    #[cfg(target_os = "windows")]
-    {
-        #[link(name = "kernel32")]
-        extern "system" {
-            fn SetDefaultDllDirectories(flags: u32) -> i32;
-        }
-        const LOAD_LIBRARY_SEARCH_SYSTEM32: u32 = 0x00000800;
-        unsafe {
-            SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32);
-        }
-    }
-    
-    // Initialize tracing for professional logging
+    // Initialize tracing for professional logging (must be early for error reporting)
     initialize_logging();
     
     info!("Starting AirImpute Pro Desktop v{}", env!("CARGO_PKG_VERSION"));
@@ -69,6 +56,16 @@ fn run_app() -> anyhow::Result<()> {
             .system_tray(system_tray)
             .on_system_tray_event(handle_system_tray_event)
             .setup(|app| {
+                // Initialize DLL security with Python directory
+                #[cfg(target_os = "windows")]
+                {
+                    let python_dir = security::dll_security::get_python_directory(&app.handle());
+                    if let Err(e) = security::dll_security::initialize_dll_security(python_dir.as_deref()) {
+                        error!("Failed to initialize DLL security: {}", e);
+                        // Continue anyway, but log the error
+                    }
+                }
+                
                 let state = initialize_app_state(app)?;
                 app.manage(state);
                 setup_main_window(app)?;
@@ -198,6 +195,16 @@ fn run_app() -> anyhow::Result<()> {
             .system_tray(system_tray)
             .on_system_tray_event(handle_system_tray_event)
             .setup(|app| {
+                // Initialize DLL security with Python directory
+                #[cfg(target_os = "windows")]
+                {
+                    let python_dir = security::dll_security::get_python_directory(&app.handle());
+                    if let Err(e) = security::dll_security::initialize_dll_security(python_dir.as_deref()) {
+                        error!("Failed to initialize DLL security: {}", e);
+                        // Continue anyway, but log the error
+                    }
+                }
+                
                 let state = initialize_app_state(app)?;
                 app.manage(state);
                 setup_main_window(app)?;
