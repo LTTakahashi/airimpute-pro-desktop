@@ -1,4 +1,5 @@
 use std::ffi::OsString;
+#[cfg(target_os = "windows")]
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use tracing::{info, warn, error};
@@ -92,7 +93,7 @@ pub fn get_python_directory(app_handle: &tauri::AppHandle) -> Option<std::path::
         let dev_python_dir = app_handle
             .path_resolver()
             .app_dir()
-            .ok()?
+    ?
             .parent()?
             .parent()?
             .join("python-dist");
@@ -104,7 +105,7 @@ pub fn get_python_directory(app_handle: &tauri::AppHandle) -> Option<std::path::
     }
     
     // In production, use the bundled Python from resources
-    if let Ok(resource_dir) = app_handle.path_resolver().resource_dir() {
+    if let Some(resource_dir) = app_handle.path_resolver().resource_dir() {
         // Try python-dist first (matches the resource configuration)
         let python_dist_dir = resource_dir.join("python-dist");
         if python_dist_dir.exists() {

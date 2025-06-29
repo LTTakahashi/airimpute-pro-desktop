@@ -1334,23 +1334,23 @@ pub async fn save_excel(dataset: &Dataset, path: &PathBuf) -> Result<()> {
         .context("Failed to add worksheet")?;
     
     // Create formats
-    let mut header_format = workbook.add_format();
+    let mut header_format = xlsxwriter::Format::new();
     header_format
         .set_bold()
         .set_bg_color(FormatColor::Custom(0xE0E0E0))
         .set_border(FormatBorder::Thin);
     
-    let mut date_format = workbook.add_format();
+    let mut date_format = xlsxwriter::Format::new();
     date_format
         .set_num_format("yyyy-mm-dd hh:mm:ss")
         .set_border(FormatBorder::Thin);
     
-    let mut number_format = workbook.add_format();
+    let mut number_format = xlsxwriter::Format::new();
     number_format
         .set_num_format("0.00000")
         .set_border(FormatBorder::Thin);
     
-    let mut na_format = workbook.add_format();
+    let mut na_format = xlsxwriter::Format::new();
     na_format
         .set_font_color(FormatColor::Red)
         .set_italic()

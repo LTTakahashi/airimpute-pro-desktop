@@ -33,7 +33,7 @@ pub use safe_bridge_v2_stub as safe_bridge_v2;
 
 // Conditional compilation for arrow_bridge  
 #[cfg(feature = "python-support")]
-pub use arrow_bridge::{PythonWorkerPool, SafePythonAction, PythonTask, PythonResponse, ndarray_to_arrow, arrow_to_ndarray, 
+pub use arrow_bridge::{PythonWorkerPool, SafePythonAction, PythonTask, ndarray_to_arrow, arrow_to_ndarray, 
     serialize_record_batch, deserialize_record_batch, TaskStatus};
 
 #[cfg(not(feature = "python-support"))]
@@ -55,11 +55,11 @@ pub use safe_bridge_v2::PythonOperation;
 
 // When Python support is disabled, use stub implementations
 #[cfg(not(feature = "python-support"))]
-pub use stub::{PythonRuntime, RuntimeStatus, HealthStatus};
+pub use stub::PythonRuntime;
 
 // When Python support is enabled, use real implementations
 #[cfg(feature = "python-support")]
-pub use python_impl::{PythonRuntime, RuntimeStatus, HealthStatus};
+pub use python_impl::PythonRuntime;
 
 #[cfg(feature = "python-support")]
 mod python_impl {
@@ -69,7 +69,7 @@ mod python_impl {
     use pyo3::prelude::*;
     use serde::Serialize;
     use tokio::sync::Mutex;
-    use tracing::{info, debug, warn, error};
+    use tracing::{info, debug, warn};
     
     use crate::python::bridge::PythonBridge;
 

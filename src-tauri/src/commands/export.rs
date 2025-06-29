@@ -7,7 +7,6 @@ use anyhow::{Result, Context};
 use tracing::info;
 use std::path::{Path, PathBuf};
 use std::fs;
-use std::io::Write;
 use chrono::{Utc, Datelike};
 
 use crate::state::AppState;

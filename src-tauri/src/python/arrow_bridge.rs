@@ -147,7 +147,6 @@ impl PythonWorkerPool {
     }
     
     async fn spawn_worker(id: usize) -> Result<PythonWorker, String> {
-        use std::io::Write;
         
         // Get the worker script
         let worker_script = include_str!("../../../scripts/airimpute/arrow_worker.py");

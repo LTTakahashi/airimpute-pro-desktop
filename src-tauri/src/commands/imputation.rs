@@ -14,7 +14,6 @@ use crate::error::CommandError;
 use crate::python::bridge::{
     ImputationRequest, ImputationMethod, ImputationParameters, ImputationResult,
     DatasetMetadata, ValidationStrategy, OptimizationSettings, MissingPattern,
-    QualityMetrics,
 };
 use crate::core::imputation::{ImputationJob, JobStatus};
 
@@ -203,7 +202,7 @@ async fn execute_imputation(
     };
     
     // Progress callback
-    let progress_callback = {
+    let _progress_callback = {
         let window = window.clone();
         let job_id = job_id;
         move |progress: f64, message: &str| {
@@ -488,12 +487,12 @@ pub async fn validate_imputation_results(
         return Err("Job not completed".to_string());
     }
     
-    let result = job.result.as_ref()
+    let _result = job.result.as_ref()
         .ok_or_else(|| "No results available".to_string())?;
     
     // Perform additional validation
     // Get original dataset for validation
-    let original_dataset = state.datasets.get(&job.dataset_id)
+    let _original_dataset = state.datasets.get(&job.dataset_id)
         .ok_or_else(|| "Original dataset not found".to_string())?;
     
     // Return stub validation when Python is disabled
@@ -621,7 +620,7 @@ fn parse_imputation_method(
     let get_u64 = |key: &str, default: u64| -> u64 {
         parameters.get(key).and_then(|v| v.as_u64()).unwrap_or(default)
     };
-    let get_str = |key: &str, default: &str| -> String {
+    let _get_str = |key: &str, default: &str| -> String {
         parameters.get(key).and_then(|v| v.as_str()).unwrap_or(default).to_string()
     };
 
@@ -648,7 +647,7 @@ fn parse_imputation_method(
     }
 }
 
-fn detect_missing_pattern(dataset: &crate::core::data::Dataset) -> MissingPattern {
+fn detect_missing_pattern(_dataset: &crate::core::data::Dataset) -> MissingPattern {
     // Analyze missing data pattern
     // This would involve statistical tests for randomness, clustering, etc.
     MissingPattern::Mixed // Placeholder
