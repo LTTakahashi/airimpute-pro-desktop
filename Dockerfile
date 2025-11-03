@@ -4,7 +4,7 @@
 # ============================================
 # Stage 1: Base build environment
 # ============================================
-FROM ubuntu:22.04 AS base
+FROM ubuntu:24.04 AS base
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
