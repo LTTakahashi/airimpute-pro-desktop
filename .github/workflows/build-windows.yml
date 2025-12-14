@@ -393,7 +393,7 @@ jobs:
       
       - name: Upload Build Artifacts
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-build-${{ github.sha }}
           path: |
